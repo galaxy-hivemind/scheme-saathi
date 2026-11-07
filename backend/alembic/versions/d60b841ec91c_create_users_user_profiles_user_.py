@@ -40,7 +40,7 @@ def upgrade() -> None:
     sa.Column('consent_status', sa.String(length=50), nullable=False),
     sa.Column('recorded_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('revoked_at', sa.DateTime(timezone=True), nullable=True),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='RESTRICT'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_user_consents_user_id'), 'user_consents', ['user_id'], unique=False)

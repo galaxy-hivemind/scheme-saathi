@@ -94,3 +94,32 @@ def test_user_consent_recording(db_session):
     assert fetched_consents[0].consent_type == "data_processing"
     assert fetched_consents[0].consent_status == "given"
     assert fetched_consents[0].recorded_at is not None
+
+
+def test_consent_retention_foreign_key_protection(db_session):
+    """
+    Verify that foreign key constraint prevents cascade deletion of user
+    if consent audit records exist (RESTRICT behavior).
+    """
+    user = User(
+        id=uuid.uuid4(),
+        email="protected.audit@example.com",
+        password_hash=hash_password("Pass1234!"),
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    consent = UserConsent(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        consent_type="dpdp_compliance",
+        consent_status="given",
+    )
+    db_session.add(consent)
+    db_session.commit()
+
+    # Attempt to delete user directly must be blocked by RESTRICT constraint
+    db_session.delete(user)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()

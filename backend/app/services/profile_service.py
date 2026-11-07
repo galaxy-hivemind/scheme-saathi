@@ -1,12 +1,12 @@
 """
-Citizen profile service managing profile lifecycle, progressive data completion, and consents.
+Citizen profile service managing profile lifecycle, progressive data completion, and consent audit trail.
 """
 from datetime import datetime, timezone
 from typing import Optional, List
 import uuid
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError, ConflictError
+from app.core.exceptions import NotFoundError, ConflictError, ValidationError
 from app.models.user_profile import UserProfile
 from app.models.user_consent import UserConsent
 from app.schemas.profile import UserProfileCreate, UserProfileUpdate, UserConsentCreate
@@ -28,11 +28,14 @@ def create_user_profile(
     data: UserProfileCreate,
 ) -> UserProfile:
     """
-    Create a new citizen profile for the specified user.
+    Safely creates or completes a citizen profile for the specified user.
+    If a profile already exists, updates it with the provided non-empty fields,
+    preventing 409 conflicts during onboarding/profile setup.
     """
-    existing = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
-    if existing:
-        raise ConflictError("Profile already exists for this user. Use update instead.")
+    profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+    if profile:
+        update_data = UserProfileUpdate(**data.model_dump(exclude_unset=True))
+        return update_user_profile(db, user_id, update_data)
 
     profile = UserProfile(
         id=uuid.uuid4(),
@@ -65,7 +68,6 @@ def update_user_profile(
     """
     profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
     if not profile:
-        # If no profile exists yet, create one
         create_payload = UserProfileCreate(**data.model_dump(exclude_unset=True))
         return create_user_profile(db, user_id, create_payload)
 
@@ -94,13 +96,19 @@ def record_user_consent(
 ) -> UserConsent:
     """
     Record an explicit user consent event.
+    If consent_status is 'revoked', routes to revocation logic.
+    Otherwise, creates an active consent record with recorded_at set and revoked_at=None.
     """
+    if data.consent_status == "revoked":
+        return revoke_user_consent(db, user_id, data.consent_type)
+
     consent = UserConsent(
         id=uuid.uuid4(),
         user_id=user_id,
         consent_type=data.consent_type,
-        consent_status=data.consent_status,
+        consent_status="given",
         recorded_at=datetime.now(timezone.utc),
+        revoked_at=None,
     )
     db.add(consent)
     db.commit()
@@ -108,8 +116,45 @@ def record_user_consent(
     return consent
 
 
+def revoke_user_consent(
+    db: Session,
+    user_id: uuid.UUID,
+    consent_type: str,
+) -> UserConsent:
+    """
+    Revoke active consent for the specified type.
+    Populates revoked_at timestamp and transitions status to 'revoked'.
+    Prevents invalid state transitions (cannot revoke already revoked or non-existent consent).
+    """
+    latest_consent = (
+        db.query(UserConsent)
+        .filter(UserConsent.user_id == user_id, UserConsent.consent_type == consent_type)
+        .order_by(UserConsent.recorded_at.desc())
+        .first()
+    )
+
+    if not latest_consent:
+        raise NotFoundError(f"No consent record found for type '{consent_type}' to revoke.")
+
+    if latest_consent.consent_status == "revoked" or latest_consent.revoked_at is not None:
+        raise ConflictError(f"Consent for type '{consent_type}' has already been revoked.")
+
+    now = datetime.now(timezone.utc)
+    latest_consent.consent_status = "revoked"
+    latest_consent.revoked_at = now
+    db.commit()
+    db.refresh(latest_consent)
+    return latest_consent
+
+
 def get_user_consents(db: Session, user_id: uuid.UUID) -> List[UserConsent]:
     """
-    Retrieve all recorded consents for a user.
+    Retrieve all recorded consents for a user in chronological audit order (newest first).
+    Consent history is preserved and never deleted.
     """
-    return db.query(UserConsent).filter(UserConsent.user_id == user_id).all()
+    return (
+        db.query(UserConsent)
+        .filter(UserConsent.user_id == user_id)
+        .order_by(UserConsent.recorded_at.desc())
+        .all()
+    )

@@ -1,5 +1,6 @@
 """
 User consent model for storing explicit citizen consents.
+Audit records are retained to maintain regulatory compliance history.
 """
 from typing import TYPE_CHECKING, Optional
 from datetime import datetime, timezone
@@ -23,9 +24,10 @@ class UserConsent(Base):
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
+        doc="Reference to user. RESTRICT prevents deleting users if consent history exists.",
     )
     consent_type: Mapped[str] = mapped_column(
         String(100),
@@ -46,6 +48,7 @@ class UserConsent(Base):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+        doc="Timestamp populated when consent is explicitly revoked",
     )
 
     # Relationships

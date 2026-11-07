@@ -51,8 +51,9 @@ class User(Base, TimestampMixin):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    # Consents are retained for audit trail; deleting a user must not cascade delete consents
     consents: Mapped[List["UserConsent"]] = relationship(
         "UserConsent",
         back_populates="user",
-        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

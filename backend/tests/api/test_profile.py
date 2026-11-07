@@ -1,5 +1,5 @@
 """
-API tests for citizen profile endpoints: retrieval, progressive updates, and user isolation.
+API tests for citizen profile endpoints: retrieval, progressive updates, consent audit trail, and isolation.
 """
 from decimal import Decimal
 import pytest
@@ -29,6 +29,32 @@ def test_get_own_profile(client):
     assert body["success"] is True
     assert body["data"]["full_name"] == "Rakesh Patel"
     assert body["data"]["preferred_language"] == "hi"
+
+
+def test_create_or_complete_profile_after_registration(client):
+    """
+    Fix 4: POST /profile safely completes an existing profile rather than
+    failing with a 409 Conflict error.
+    """
+    token = _register_and_get_token(client, "post.profile@example.com", "Initial Name")
+
+    # Call POST /profile to complete onboarding details
+    response = client.post(
+        "/api/v1/profile",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "state": "Bihar",
+            "district": "Patna",
+            "occupation": "small_business",
+            "annual_family_income": 95000.0,
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["full_name"] == "Initial Name"  # preserved
+    assert body["data"]["state"] == "Bihar"
+    assert body["data"]["occupation"] == "small_business"
 
 
 def test_update_profile_progressive(client):
@@ -94,29 +120,99 @@ def test_user_data_isolation(client):
     assert data_b["state"] is None
 
 
-def test_record_and_get_consent(client):
-    token = _register_and_get_token(client, "consent.api@example.com", "Consent User")
+def test_consent_lifecycle_and_audit_trail(client):
+    """
+    Fix 5: Test grant, revoke, revoked_at timestamp, repeated revocation rejection,
+    and complete audit trail preservation.
+    """
+    token = _register_and_get_token(client, "consent.audit@example.com", "Consent Auditor")
 
-    # Record consent
-    c_resp = client.post(
+    # 1. Grant consent
+    grant_resp = client.post(
         "/api/v1/profile/consent",
         headers={"Authorization": f"Bearer {token}"},
         json={"consent_type": "data_processing", "consent_status": "given"},
     )
-    assert c_resp.status_code == 201
-    c_data = c_resp.json()["data"]
-    assert c_data["consent_type"] == "data_processing"
-    assert c_data["consent_status"] == "given"
+    assert grant_resp.status_code == 201
+    g_data = grant_resp.json()["data"]
+    assert g_data["consent_type"] == "data_processing"
+    assert g_data["consent_status"] == "given"
+    assert g_data["recorded_at"] is not None
+    assert g_data["revoked_at"] is None
 
-    # List consents
-    list_resp = client.get(
+    # 2. Revoke consent explicitly
+    revoke_resp = client.post(
+        "/api/v1/profile/consent/revoke",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"consent_type": "data_processing"},
+    )
+    assert revoke_resp.status_code == 200
+    r_data = revoke_resp.json()["data"]
+    assert r_data["consent_type"] == "data_processing"
+    assert r_data["consent_status"] == "revoked"
+    assert r_data["revoked_at"] is not None
+
+    # 3. Repeated revoke is rejected with 409 CONFLICT
+    repeated_revoke = client.post(
+        "/api/v1/profile/consent/revoke",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"consent_type": "data_processing"},
+    )
+    assert repeated_revoke.status_code == 409
+    assert repeated_revoke.json()["error"]["code"] == "CONFLICT"
+
+    # 4. Revoking a non-existent consent returns 404 NOT_FOUND
+    nonexistent_revoke = client.post(
+        "/api/v1/profile/consent/revoke",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"consent_type": "terms_never_granted"},
+    )
+    assert nonexistent_revoke.status_code == 404
+    assert nonexistent_revoke.json()["error"]["code"] == "NOT_FOUND"
+
+    # 5. Re-grant consent creates a new record and preserves both
+    re_grant = client.post(
+        "/api/v1/profile/consent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"consent_type": "data_processing", "consent_status": "given"},
+    )
+    assert re_grant.status_code == 201
+
+    # 6. Audit trail list shows both records
+    history_resp = client.get(
         "/api/v1/profile/consent",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert list_resp.status_code == 200
-    records = list_resp.json()["data"]
-    assert len(records) == 1
-    assert records[0]["consent_type"] == "data_processing"
+    assert history_resp.status_code == 200
+    records = history_resp.json()["data"]
+    assert len(records) == 2
+    # Newest record is active given
+    assert records[0]["consent_status"] == "given"
+    assert records[0]["revoked_at"] is None
+    # Previous record is revoked with timestamp
+    assert records[1]["consent_status"] == "revoked"
+    assert records[1]["revoked_at"] is not None
+
+
+def test_cross_user_consent_isolation(client):
+    """Verify that User A cannot view User B's consent records."""
+    token_a = _register_and_get_token(client, "consent.a@example.com", "User A")
+    token_b = _register_and_get_token(client, "consent.b@example.com", "User B")
+
+    # User A records consent
+    client.post(
+        "/api/v1/profile/consent",
+        headers={"Authorization": f"Bearer {token_a}"},
+        json={"consent_type": "special_scheme_consent", "consent_status": "given"},
+    )
+
+    # User B checks consents — must be empty
+    resp_b = client.get(
+        "/api/v1/profile/consent",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert resp_b.status_code == 200
+    assert len(resp_b.json()["data"]) == 0
 
 
 def test_unauthenticated_profile_access_rejected(client):

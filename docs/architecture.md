@@ -34,13 +34,13 @@ Scheme Saathi is a mobile-first, conversational AI platform that helps Indian ci
 │  └───────────────────────────────────────────────────────────┘  │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
-        ┌───────────────────┼───────────────────┐
-        ▼                   ▼                   ▼
-┌───────────────┐  ┌────────────────┐  ┌───────────────────┐
-│  PostgreSQL   │  │ Supabase Auth  │  │ Supabase Storage  │
-│  (via Supa-   │  │  JWT tokens    │  │ Private documents │
-│   base)       │  └────────────────┘  └───────────────────┘
-└───────────────┘
+        ┌───────────────────┴───────────────────┐
+        ▼                                       ▼
+┌───────────────┐                       ┌───────────────────┐
+│  PostgreSQL   │                       │ Supabase Storage  │
+│  (Supabase /  │                       │ Private documents │
+│   standard)   │                       │   (Phase 4)       │
+└───────────────┘                       └───────────────────┘
 ```
 
 ---
@@ -121,7 +121,7 @@ Citizen message
 
 | Concern | Approach |
 |---|---|
-| Authentication | Supabase Auth JWT (verified on every request) |
+| Authentication | Self-contained JWT access tokens (HMAC-SHA256) + bcrypt password hashing |
 | Authorization | Service layer enforces user ownership |
 | Secrets | Environment variables only, never committed |
 | Document privacy | Supabase Storage with signed URLs |

@@ -122,7 +122,7 @@ curl -X PUT http://localhost:8000/api/v1/profile \
   }'
 ```
 
-### 6. Record Consent
+### 6. Record Consent (Grant)
 ```bash
 curl -X POST http://localhost:8000/api/v1/profile/consent \
   -H "Authorization: Bearer <token>" \
@@ -131,6 +131,22 @@ curl -X POST http://localhost:8000/api/v1/profile/consent \
     "consent_type": "data_processing",
     "consent_status": "given"
   }'
+```
+
+### 7. Revoke Consent
+```bash
+curl -X POST http://localhost:8000/api/v1/profile/consent/revoke \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "consent_type": "data_processing"
+  }'
+```
+
+### 8. List Consent History
+```bash
+curl -X GET http://localhost:8000/api/v1/profile/consent \
+  -H "Authorization: Bearer <token>"
 ```
 
 ## Project structure

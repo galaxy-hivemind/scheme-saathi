@@ -5,30 +5,46 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import bcrypt
 from jose import JWTError, jwt
-from fastapi import Depends, Request
+from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.exceptions import UnauthorizedError, ForbiddenError
+from app.core.exceptions import UnauthorizedError, ForbiddenError, ValidationError
 from app.database.dependencies import get_db
 
-# Bearer token scheme (auto_error=False so we can provide our standard error response)
 bearer_scheme = HTTPBearer(auto_error=False)
+
+# Bcrypt maximum safe input length in bytes
+BCRYPT_MAX_BYTES = 72
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
+    """
+    Hash a password using bcrypt.
+    Enforces maximum password byte length to avoid silent truncation or crashes.
+    """
+    password_bytes = password.encode("utf-8")
+    if len(password_bytes) > BCRYPT_MAX_BYTES:
+        raise ValidationError(
+            f"Password cannot exceed {BCRYPT_MAX_BYTES} bytes in UTF-8 encoding (got {len(password_bytes)} bytes)."
+        )
     salt = bcrypt.gensalt(rounds=12)
-    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    hashed = bcrypt.hashpw(password_bytes, salt)
     return hashed.decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain password against a bcrypt hash."""
+    """
+    Verify a plain password against a bcrypt hash.
+    Safely rejects oversized passwords without raising uncaught exceptions.
+    """
     try:
+        password_bytes = plain_password.encode("utf-8")
+        if len(password_bytes) > BCRYPT_MAX_BYTES:
+            return False
         return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
+            password_bytes,
             hashed_password.encode("utf-8"),
         )
     except Exception:
@@ -41,8 +57,7 @@ def create_access_token(
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
-    Generate a signed JWT access token.
-    'subject' is usually the user ID (UUID string).
+    Generate a signed JWT access token using the configured secret and algorithm.
     """
     now = datetime.now(timezone.utc)
     if expires_delta:
@@ -69,7 +84,8 @@ def create_access_token(
 def decode_access_token(token: str) -> Dict[str, Any]:
     """
     Decode and validate a JWT access token.
-    Raises UnauthorizedError if invalid or expired.
+    Enforces secret and algorithm validation.
+    Raises UnauthorizedError if signature is invalid, subject is missing, or token expired.
     """
     try:
         payload = jwt.decode(
@@ -79,10 +95,10 @@ def decode_access_token(token: str) -> Dict[str, Any]:
         )
         sub = payload.get("sub")
         if not sub:
-            raise UnauthorizedError("Invalid token: missing subject.")
+            raise UnauthorizedError("Invalid token: missing subject identity.")
         return payload
     except JWTError as e:
-        raise UnauthorizedError(f"Invalid or expired token: {str(e)}")
+        raise UnauthorizedError(f"Invalid or expired authentication token: {str(e)}")
 
 
 def get_current_user(
@@ -112,6 +128,6 @@ def get_current_user(
         raise UnauthorizedError("User account not found.")
 
     if not user.is_active:
-        raise ForbiddenError("Account is inactive.")
+        raise ForbiddenError("This account has been deactivated.")
 
     return user

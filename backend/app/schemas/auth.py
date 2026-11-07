@@ -4,7 +4,7 @@ Authentication request and response schemas.
 from datetime import datetime
 from typing import Optional
 import uuid
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 
 
 class RegisterRequest(BaseModel):
@@ -13,10 +13,26 @@ class RegisterRequest(BaseModel):
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)
     preferred_language: str = Field(default="hi", pattern="^(hi|en)$")
 
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        byte_len = len(v.encode("utf-8"))
+        if byte_len > 72:
+            raise ValueError(f"Password cannot exceed 72 bytes in UTF-8 encoding (got {byte_len} bytes).")
+        return v
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_length(cls, v: str) -> str:
+        byte_len = len(v.encode("utf-8"))
+        if byte_len > 72:
+            raise ValueError(f"Password cannot exceed 72 bytes in UTF-8 encoding (got {byte_len} bytes).")
+        return v
 
 
 class TokenResponse(BaseModel):

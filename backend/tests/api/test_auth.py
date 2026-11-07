@@ -1,7 +1,9 @@
 """
-API tests for authentication endpoints: registration, login, and token verification.
+API tests for authentication endpoints: registration, login, token verification, and error handling.
 """
+from unittest.mock import patch
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 
 def test_successful_registration(client):
@@ -31,16 +33,39 @@ def test_registration_duplicate_email_rejected(client):
         "password": "SecurePassword123!",
         "full_name": "Aman Verma",
     }
-    # First registration
     r1 = client.post("/api/v1/auth/register", json=payload)
     assert r1.status_code == 201
 
-    # Second registration with same email
     r2 = client.post("/api/v1/auth/register", json=payload)
     assert r2.status_code == 409
     body = r2.json()
     assert body["success"] is False
     assert body["error"]["code"] == "CONFLICT"
+
+
+def test_registration_concurrent_integrity_error_handled(client):
+    """
+    Simulate a concurrent registration race where another transaction inserts
+    the same email between our application check and commit.
+    """
+    payload = {
+        "email": "race.condition@example.com",
+        "password": "SecurePassword123!",
+    }
+
+    # First registration succeeds
+    client.post("/api/v1/auth/register", json=payload)
+
+    # Patch db.commit to simulate database-level IntegrityError on duplicate
+    with patch("sqlalchemy.orm.Session.commit", side_effect=IntegrityError("duplicate key", params=None, orig=Exception())):
+        response = client.post(
+            "/api/v1/auth/register",
+            json={"email": "another.user@example.com", "password": "SecurePassword123!"},
+        )
+        assert response.status_code == 409
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "CONFLICT"
 
 
 def test_registration_short_password_rejected(client):
@@ -55,8 +80,20 @@ def test_registration_short_password_rejected(client):
     assert body["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_registration_oversized_password_rejected(client):
+    payload = {
+        "email": "oversized.pass@example.com",
+        "password": "A" * 73,  # 73 bytes exceeds bcrypt limit
+    }
+    response = client.post("/api/v1/auth/register", json=payload)
+    assert response.status_code == 422
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert "72 bytes" in str(body["error"]["details"]).lower()
+
+
 def test_successful_login(client):
-    # Register first
     client.post(
         "/api/v1/auth/register",
         json={
@@ -66,7 +103,6 @@ def test_successful_login(client):
         },
     )
 
-    # Login
     response = client.post(
         "/api/v1/auth/login",
         json={"email": "login.test@example.com", "password": "CorrectPassword123!"},
@@ -105,6 +141,29 @@ def test_login_unknown_email_rejected(client):
     body = response.json()
     assert body["success"] is False
     assert body["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_login_inactive_account_rejected(client, db_session):
+    from app.models.user import User
+
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "deactivated@example.com", "password": "Password123!"},
+    )
+
+    # Deactivate the account in database
+    user = db_session.query(User).filter(User.email == "deactivated@example.com").first()
+    user.is_active = False
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "deactivated@example.com", "password": "Password123!"},
+    )
+    assert response.status_code == 403
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "FORBIDDEN"
 
 
 def test_get_current_user_me_authenticated(client):

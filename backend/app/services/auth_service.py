@@ -5,6 +5,7 @@ from datetime import timedelta
 import uuid
 from typing import Tuple
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.exceptions import ConflictError, UnauthorizedError, ForbiddenError
@@ -18,10 +19,11 @@ def register_user(db: Session, req: RegisterRequest) -> Tuple[User, TokenRespons
     """
     Registers a new user account, creates their initial profile,
     and returns the User object along with a signed JWT.
+    Catches IntegrityError on commit to handle concurrent registration attempts safely.
     """
     normalized_email = req.email.lower().strip()
 
-    # Check for existing email
+    # Pre-check for existing email
     existing_user = db.query(User).filter(User.email == normalized_email).first()
     if existing_user:
         raise ConflictError("An account with this email address already exists.")
@@ -47,7 +49,13 @@ def register_user(db: Session, req: RegisterRequest) -> Tuple[User, TokenRespons
     )
     db.add(profile)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Authoritative database uniqueness constraint violated (e.g. concurrent registration)
+        raise ConflictError("An account with this email address already exists.")
+
     db.refresh(new_user)
 
     # Issue JWT token

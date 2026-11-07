@@ -58,6 +58,10 @@ class UserConsentCreate(BaseModel):
     consent_status: str = Field(default="given", pattern="^(given|revoked)$")
 
 
+class UserConsentRevokeRequest(BaseModel):
+    consent_type: str = Field(..., min_length=2, max_length=100)
+
+
 class UserConsentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

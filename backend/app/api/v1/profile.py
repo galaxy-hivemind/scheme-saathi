@@ -1,5 +1,5 @@
 """
-Citizen profile endpoints for retrieving and progressively completing profile details.
+Citizen profile endpoints for retrieving, completing profile details, and managing consents.
 """
 from typing import List
 from fastapi import APIRouter, Depends, status
@@ -13,6 +13,7 @@ from app.schemas.profile import (
     UserProfileUpdate,
     UserProfileResponse,
     UserConsentCreate,
+    UserConsentRevokeRequest,
     UserConsentResponse,
 )
 from app.schemas.common import APIResponse
@@ -42,8 +43,8 @@ def get_profile(
 @router.post(
     "",
     response_model=APIResponse[UserProfileResponse],
-    status_code=status.HTTP_201_CREATED,
-    summary="Create profile (first-time setup)",
+    status_code=status.HTTP_200_OK,
+    summary="Create or complete profile",
 )
 def create_profile(
     data: UserProfileCreate,
@@ -51,7 +52,8 @@ def create_profile(
     db: Session = Depends(get_db),
 ) -> APIResponse[UserProfileResponse]:
     """
-    Explicitly create a profile for the authenticated user.
+    Create or complete the citizen profile for the authenticated user.
+    If the profile was already created during registration, safely updates it with any new details.
     """
     profile = profile_service.create_user_profile(db, current_user.id, data)
     return APIResponse.ok(UserProfileResponse.model_validate(profile))
@@ -87,9 +89,28 @@ def record_consent(
     db: Session = Depends(get_db),
 ) -> APIResponse[UserConsentResponse]:
     """
-    Record an explicit consent granted by the authenticated user.
+    Record an explicit consent granted (or revoked) by the authenticated user.
     """
     consent = profile_service.record_user_consent(db, current_user.id, data)
+    return APIResponse.ok(UserConsentResponse.model_validate(consent))
+
+
+@router.post(
+    "/consent/revoke",
+    response_model=APIResponse[UserConsentResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Explicitly revoke user consent",
+)
+def revoke_consent(
+    data: UserConsentRevokeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> APIResponse[UserConsentResponse]:
+    """
+    Revoke active consent for the specified type.
+    Populates revoked_at and transitions status to 'revoked' while preserving audit history.
+    """
+    consent = profile_service.revoke_user_consent(db, current_user.id, data.consent_type)
     return APIResponse.ok(UserConsentResponse.model_validate(consent))
 
 
@@ -104,7 +125,7 @@ def get_consents(
     db: Session = Depends(get_db),
 ) -> APIResponse[List[UserConsentResponse]]:
     """
-    Retrieve all recorded consent records for the authenticated user.
+    Retrieve all recorded consent audit records for the authenticated user in chronological order.
     """
     consents = profile_service.get_user_consents(db, current_user.id)
     return APIResponse.ok([UserConsentResponse.model_validate(c) for c in consents])

@@ -13,6 +13,7 @@ from app.schemas.profile import (
     UserProfileUpdate,
     UserProfileResponse,
     UserConsentCreate,
+    UserConsentRevokeRequest,
     UserConsentResponse,
 )
 
@@ -28,5 +29,6 @@ __all__ = [
     "UserProfileUpdate",
     "UserProfileResponse",
     "UserConsentCreate",
+    "UserConsentRevokeRequest",
     "UserConsentResponse",
 ]

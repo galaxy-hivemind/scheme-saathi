@@ -30,15 +30,17 @@
 ## Tables
 
 ### `users`
-Linked to Supabase Auth. Created on first login.
+System user accounts for native authentication with email/password (bcrypt) and JWT.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | |
-| auth_provider_id | TEXT UNIQUE NOT NULL | Supabase Auth UID |
-| email | TEXT UNIQUE | Optional — from auth provider |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
+| id | UUID PK | gen_random_uuid() |
+| email | TEXT UNIQUE NOT NULL | Indexed, normalized lowercase |
+| password_hash | TEXT NOT NULL | Salty bcrypt hash (12 rounds) |
+| is_active | BOOLEAN NOT NULL DEFAULT true | Account status check |
+| auth_provider_id | TEXT UNIQUE | Optional external UID for future identity providers |
+| created_at | TIMESTAMPTZ | Automatic timestamp |
+| updated_at | TIMESTAMPTZ | Automatic timestamp |
 
 ---
 
@@ -48,14 +50,15 @@ Citizen profile data collected progressively.
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID PK | |
-| user_id | UUID FK → users.id | UNIQUE — one profile per user |
-| full_name | TEXT | |
+| user_id | UUID FK → users.id | UNIQUE — one profile per user (CASCADE on delete) |
+| full_name | TEXT | Citizen full name |
 | date_of_birth | DATE | |
+| gender | TEXT | Demographic classification |
 | state | TEXT | Indian state name |
 | district | TEXT | |
-| residence_type | TEXT | rural / urban / semi_urban |
-| occupation | TEXT | |
-| annual_family_income | NUMERIC | INR |
+| residence_type | TEXT | 'rural', 'urban', or 'semi_urban' |
+| occupation | TEXT | Occupation / trade |
+| annual_family_income | NUMERIC(12,2) | INR |
 | preferred_language | TEXT | 'hi' or 'en' — default 'hi' |
 | profile_data | JSONB | Scheme-specific extra fields |
 | created_at | TIMESTAMPTZ | |
@@ -64,15 +67,16 @@ Citizen profile data collected progressively.
 ---
 
 ### `user_consents`
-Explicit consent records — never deleted.
+Explicit immutable consent audit records — retained for regulatory compliance.
 
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID PK | |
-| user_id | UUID FK → users.id | |
+| user_id | UUID FK → users.id | FK with RESTRICT to protect audit history |
 | consent_type | TEXT | e.g. 'data_processing', 'terms_of_service' |
 | consent_status | TEXT | 'given' / 'revoked' |
-| recorded_at | TIMESTAMPTZ | When consent was given |
+| recorded_at | TIMESTAMPTZ | When consent was granted |
+| revoked_at | TIMESTAMPTZ | NULL until revoked; populated upon revocation |
 | revoked_at | TIMESTAMPTZ | NULL until revoked |
 
 ---

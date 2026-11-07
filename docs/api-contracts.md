@@ -50,10 +50,10 @@ All endpoints are prefixed with `/api/v1/`.
 
 ## Authentication
 
-All endpoints except `/health` and `/auth/*` require a valid Supabase JWT in the `Authorization` header:
+All endpoints except `/health` and `/auth/*` require a valid JWT Bearer access token in the `Authorization` header:
 
 ```
-Authorization: Bearer <supabase-jwt>
+Authorization: Bearer <access_token>
 ```
 
 ---
@@ -285,18 +285,36 @@ Response: `{ data: { "access_token": "...", "token_type": "bearer", "expires_in_
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/profile` | JWT | Get current user's profile |
-| POST | `/profile` | JWT | Create profile (first-time setup) |
-| PUT | `/profile` | JWT | Update profile fields |
-| POST | `/profile/consent` | JWT | Record explicit user consent |
-| GET | `/profile/consent` | JWT | List recorded consents for user |
+| POST | `/profile` | JWT | Create or complete profile (safe update if exists) |
+| PUT | `/profile` | JWT | Update profile fields progressively |
+| POST | `/profile/consent` | JWT | Record explicit user consent (grant) |
+| POST | `/profile/consent/revoke` | JWT | Explicitly revoke active consent |
+| GET | `/profile/consent` | JWT | List audit trail of recorded consents for user |
 
 **GET /profile** → `{ data: UserProfile }`
 
-**POST /profile** Request body:
+**POST /profile** Request body (creates or completes existing profile):
 ```json
 {
   "full_name": "Ramesh Kumar",
-  "preferred_language": "hi"
+  "preferred_language": "hi",
+  "state": "Uttar Pradesh",
+  "district": "Varanasi"
+}
+```
+
+**POST /profile/consent** Request body:
+```json
+{
+  "consent_type": "data_processing",
+  "consent_status": "given"
+}
+```
+
+**POST /profile/consent/revoke** Request body:
+```json
+{
+  "consent_type": "data_processing"
 }
 ```
 
