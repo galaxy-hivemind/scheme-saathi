@@ -1,9 +1,18 @@
 # Scheme Saathi — Database Schema
 
-**Database:** PostgreSQL (via Supabase)
+**Database:** PostgreSQL (via Supabase or local instance)
 **ORM:** SQLAlchemy 2.0
 **Migrations:** Alembic
 **Primary keys:** UUID v4
+**Phase 1 Status:** Implemented & Migrated (Revision: `d60b841ec91c`)
+
+---
+
+## Implemented in Phase 1
+
+1. **`users`** — System user accounts and authentication state.
+2. **`user_profiles`** — Citizen demographics, location, occupation, and financial attributes.
+3. **`user_consents`** — Explicit immutable consent audit trail.
 
 ---
 

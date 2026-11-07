@@ -18,7 +18,12 @@ class Settings(BaseSettings):
     APP_NAME: str = "Scheme Saathi API"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
-    SECRET_KEY: str = "change-me"
+    SECRET_KEY: str = "scheme-saathi-super-secret-key-change-in-production-min-32-chars"
+
+    # ── Authentication & JWT ──────────────────────────────────────────────────
+    JWT_SECRET: str = "scheme-saathi-jwt-secret-key-change-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
     # ── Server ────────────────────────────────────────────────────────────────
     HOST: str = "0.0.0.0"
@@ -26,6 +31,8 @@ class Settings(BaseSettings):
 
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 20
 
     # ── Supabase ──────────────────────────────────────────────────────────────
     SUPABASE_URL: str = ""

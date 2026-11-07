@@ -246,6 +246,40 @@ interface APIError {
 
 ---
 
+### Auth
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/auth/register` | None | Register new citizen account & create profile |
+| POST | `/auth/login` | None | Authenticate with email/password & receive JWT |
+| GET | `/auth/me` | JWT | Get current authenticated user identity |
+
+**POST /auth/register** Request body:
+```json
+{
+  "email": "citizen@example.com",
+  "password": "SecurePassword123!",
+  "full_name": "Ramesh Kumar",
+  "preferred_language": "hi"
+}
+```
+
+Response: `{ data: { "access_token": "...", "token_type": "bearer", "expires_in_seconds": 604800, "user_id": "...", "email": "..." } }`
+
+**POST /auth/login** Request body:
+```json
+{
+  "email": "citizen@example.com",
+  "password": "SecurePassword123!"
+}
+```
+
+Response: `{ data: { "access_token": "...", "token_type": "bearer", "expires_in_seconds": 604800, "user_id": "...", "email": "..." } }`
+
+**GET /auth/me** → `{ data: { "id": "...", "email": "...", "is_active": true, "created_at": "..." } }`
+
+---
+
 ### Profile
 
 | Method | Path | Auth | Description |
@@ -253,6 +287,8 @@ interface APIError {
 | GET | `/profile` | JWT | Get current user's profile |
 | POST | `/profile` | JWT | Create profile (first-time setup) |
 | PUT | `/profile` | JWT | Update profile fields |
+| POST | `/profile/consent` | JWT | Record explicit user consent |
+| GET | `/profile/consent` | JWT | List recorded consents for user |
 
 **GET /profile** → `{ data: UserProfile }`
 
