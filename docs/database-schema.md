@@ -84,7 +84,6 @@ Explicit immutable consent audit records — retained for regulatory compliance.
 | consent_status | TEXT | 'given' / 'revoked' |
 | recorded_at | TIMESTAMPTZ | When consent was granted |
 | revoked_at | TIMESTAMPTZ | NULL until revoked; populated upon revocation |
-| revoked_at | TIMESTAMPTZ | NULL until revoked |
 
 ---
 
@@ -311,3 +310,28 @@ Immutable status audit trail.
 | notifications | User can only read own notifications |
 | schemes | Public read (all authenticated users) |
 | scheme_documents | Public read (all authenticated users) |
+
+---
+
+## Migration Testing and Schema Isolation
+
+To safely test Alembic migrations without risking data loss or contaminating the public application schema, Scheme Saathi uses dedicated per-run PostgreSQL schemas (`migtest_<uuid>`) and strict environment safety guards.
+
+### Safety Guards & Pre-flight Checks
+1. **Explicit Opt-in:** Destructive migration lifecycle tests require the explicit environment variable:
+   `ALLOW_MIGRATION_TESTS=1` (or `ALLOW_DESTRUCTIVE_MIGRATION_TESTS=1`).
+   Without this flag, destructive tests skip or reject execution to prevent inadvertent runs.
+2. **Database Identity Verification:** The test runner resolves target host IPs and queries PostgreSQL's `SELECT current_database()` as well as catalog identity (`pg_control_system()`, `pg_database`). If the target matches the active application database (configured via `DATABASE_URL`), test execution is immediately halted with a `ValueError`.
+3. **No Public Schema Drops:** The test runner **never** drops the `public` schema. All migration tables (`users`, `user_profiles`, `user_consents`, and `alembic_version`) are created inside an ephemeral schema unique to each test run.
+4. **Reliable Teardown:** Schema teardown (`DROP SCHEMA <schema_name> CASCADE`) executes in guaranteed teardown blocks, preserving any underlying assertion exceptions.
+
+### Running Migration Tests
+```bash
+# 1. Ensure test database is provisioned
+createdb -h localhost -U postgres scheme_saathi_migration_test
+
+# 2. Run migration test suite with explicit opt-in
+ALLOW_MIGRATION_TESTS=1 \
+MIGRATION_TEST_DB_URL=postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test \
+pytest tests/integration/test_migrations.py -v
+```

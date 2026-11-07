@@ -69,6 +69,15 @@ The test suite runs against an isolated PostgreSQL test database (`scheme_saathi
 pytest tests/ -v
 ```
 
+### Migration Tests (Schema Isolated)
+
+Migration tests run against an ephemeral test schema inside `scheme_saathi_migration_test` and require explicit opt-in:
+```bash
+ALLOW_MIGRATION_TESTS=1 \
+MIGRATION_TEST_DB_URL=postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test \
+pytest tests/integration/test_migrations.py -v
+```
+
 ## Authentication & Profile Endpoints
 
 All authenticated routes expect the JWT token in the `Authorization` header:
