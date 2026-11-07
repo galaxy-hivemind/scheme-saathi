@@ -4,7 +4,14 @@
 **ORM:** SQLAlchemy 2.0
 **Migrations:** Alembic
 **Primary keys:** UUID v4
-**Phase 1 Status:** Implemented & Migrated (Revision: `d60b841ec91c`)
+**Phase 1 Status:** Implemented & Migrated (Head Revision: `bb1bf3e30acc`)
+
+---
+
+## Migration History
+
+1. **`d60b841ec91c`** — Initial schema creation (`users`, `user_profiles`, `user_consents`).
+2. **`bb1bf3e30acc`** — Alters `user_consents.user_id` foreign key from `CASCADE` to `RESTRICT` to enforce non-destructive consent audit retention.
 
 ---
 

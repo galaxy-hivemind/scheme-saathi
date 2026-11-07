@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app as fastapi_app
 from app.database.base import Base
 from app.database.dependencies import get_db
@@ -17,6 +18,9 @@ TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql://postgres:postgres@localhost:5432/scheme_saathi_test",
 )
+
+if TEST_DATABASE_URL == settings.DATABASE_URL:
+    raise RuntimeError("TEST_DATABASE_URL cannot be identical to application DATABASE_URL.")
 
 test_engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
 TestingSessionLocal = sessionmaker(
