@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.eggs/
+*.so
+.mypy_cache/
+.ruff_cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+out/
+
+# Editor and operating system
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads / user files
+uploads/
+user_documents/
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Alembic
+# Keep alembic.ini and migrations/ tracked — do NOT add them here
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.__MACOSX
