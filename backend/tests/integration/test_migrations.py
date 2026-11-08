@@ -26,45 +26,121 @@ from app.core.db_safety import (
     safe_drop_schema,
     MIGRATION_TEST_PURPOSE,
     MIGRATION_TEST_OPT_IN_VARS,
+    TEST_RUNTIME_ROLE,
+    ADMIN_ROLES,
 )
 
-TEST_DB_USER = os.getenv("TEST_DB_USER", "scheme_saathi_test_user")
-TEST_DB_PASSWORD = os.getenv("TEST_DB_PASSWORD", "test_secure_password")
+TEST_DB_USER = os.getenv("TEST_DB_USER", TEST_RUNTIME_ROLE)
 TEST_DB_HOST = os.getenv("TEST_DB_HOST", "localhost")
 TEST_DB_PORT = os.getenv("TEST_DB_PORT", "5432")
 MIGRATION_DB_NAME = os.getenv("MIGRATION_DB_NAME", "scheme_saathi_migration_test")
 
-DEFAULT_MIGRATION_URL = f"postgresql://{TEST_DB_USER}:{TEST_DB_PASSWORD}@{TEST_DB_HOST}:{TEST_DB_PORT}/{MIGRATION_DB_NAME}"
-MIGRATION_TEST_DB_URL = os.getenv("MIGRATION_TEST_DB_URL", DEFAULT_MIGRATION_URL)
+
+def get_migration_test_db_url() -> str:
+    """
+    Return the active migration test database URL.
+    Requires explicit TEST_DB_PASSWORD in fallback mode. Never uses hardcoded or placeholder passwords.
+    """
+    explicit_url = os.getenv("MIGRATION_TEST_DB_URL")
+    if explicit_url:
+        parsed = normalize_db_url(explicit_url)
+        pwd = parsed.password
+        if not pwd or not pwd.strip() or pwd.strip() in ("placeholder", "password"):
+            raise ValueError(
+                "MIGRATION_TEST_DB_URL was provided without valid credentials. "
+                "An explicit, non-placeholder password is required for migration test fallback execution."
+            )
+        return explicit_url
+
+    pwd = os.getenv("TEST_DB_PASSWORD")
+    if not pwd or not pwd.strip() or pwd.strip() in ("placeholder", "password"):
+        raise ValueError(
+            "Missing required migration test database credentials: TEST_DB_PASSWORD must be "
+            "explicitly configured in the environment for migration fallback execution. "
+            "Example: TEST_DB_PASSWORD=<password> ALLOW_MIGRATION_TESTS=1 pytest tests/integration/test_migrations.py -v"
+        )
+
+    from urllib.parse import quote_plus
+    safe_pwd = quote_plus(pwd.strip())
+    return f"postgresql://{TEST_DB_USER}:{safe_pwd}@{TEST_DB_HOST}:{TEST_DB_PORT}/{MIGRATION_DB_NAME}"
 
 
-def validate_migration_test_target(test_url: str, app_url: str, enforce_opt_in: bool = True) -> None:
-    """Pre-flight validation for migration test execution using shared db_safety engine."""
-    validate_database_target(
+def __getattr__(name: str):
+    """Provide lazy access to module-level properties so unit tests never trigger eager DB setup."""
+    if name == "MIGRATION_TEST_DB_URL":
+        return get_migration_test_db_url()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+
+def validate_migration_test_target(
+    test_url: str,
+    app_url: str,
+    enforce_opt_in: bool = True,
+    enforce_restricted_role: bool = True,
+    expected_role: str = TEST_DB_USER,
+) -> None:
+    """Pre-flight validation for migration test execution with restricted role enforcement."""
+    verify_database_isolation(
         target_url=test_url,
         app_url=app_url,
-        target_label="migration test database",
+        expected_purpose=MIGRATION_TEST_PURPOSE,
         enforce_opt_in=enforce_opt_in,
         opt_in_env_vars=MIGRATION_TEST_OPT_IN_VARS,
+        enforce_restricted_role=enforce_restricted_role,
+        expected_role=expected_role,
     )
+
+
+def verify_migration_connected_role(engine, expected_role: str = TEST_DB_USER) -> None:
+    """Verifies that the migration engine connects using the expected restricted runtime role."""
+    with engine.connect() as conn:
+        connected_user = conn.execute(text("SELECT current_user;")).scalar()
+        is_super = conn.execute(text("SELECT current_setting('is_superuser');")).scalar()
+    if is_super == "on" or (connected_user and connected_user.lower() in ADMIN_ROLES):
+        raise PermissionError(
+            f"Migration test execution with administrative/superuser role '{connected_user}' is forbidden. "
+            f"Fallback execution must use the restricted runtime role '{expected_role}'."
+        )
+    if connected_user != expected_role:
+        raise PermissionError(
+            f"Expected migration fallback execution to connect as restricted role '{expected_role}', "
+            f"but connected as '{connected_user}'."
+        )
 
 
 @contextmanager
 def isolated_test_schema(engine, prefix: str = "migtest"):
     """
     Context manager providing a genuinely isolated, ephemeral PostgreSQL schema.
-    Uses safe_create_schema and safe_drop_schema to guarantee isolation.
+    Uses safe_create_schema and safe_drop_schema with restricted role enforcement.
     Never drops or modifies the public schema.
     """
+    test_url = get_migration_test_db_url()
     schema_name = f"{prefix}_{uuid.uuid4().hex[:12]}"
-    safe_create_schema(engine, schema_name, MIGRATION_TEST_DB_URL, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+    safe_create_schema(
+        engine,
+        schema_name,
+        test_url,
+        settings.DATABASE_URL,
+        purpose=MIGRATION_TEST_PURPOSE,
+        enforce_restricted_role=True,
+        expected_role=TEST_DB_USER,
+    )
 
     try:
         yield schema_name
     finally:
         exc_type, _, _ = sys.exc_info()
         try:
-            safe_drop_schema(engine, schema_name, MIGRATION_TEST_DB_URL, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+            safe_drop_schema(
+                engine,
+                schema_name,
+                test_url,
+                settings.DATABASE_URL,
+                purpose=MIGRATION_TEST_PURPOSE,
+                enforce_restricted_role=True,
+                expected_role=TEST_DB_USER,
+            )
         except Exception as teardown_exc:
             if exc_type is not None:
                 warnings.warn(f"Teardown error dropping schema {schema_name}: {teardown_exc}", stacklevel=2)
@@ -76,19 +152,36 @@ def isolated_test_schema(engine, prefix: str = "migtest"):
 def managed_control_schema(engine, prefix: str = "control"):
     """
     Context manager that safely manages an isolated control schema.
-    Uses centralized safe schema gateways and guarantees cleanup on partial setup failure.
+    Uses centralized safe schema gateways with restricted role enforcement.
     """
+    test_url = get_migration_test_db_url()
     schema_name = f"{prefix}_{uuid.uuid4().hex[:12]}"
     created = False
     try:
-        safe_create_schema(engine, schema_name, MIGRATION_TEST_DB_URL, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+        safe_create_schema(
+            engine,
+            schema_name,
+            test_url,
+            settings.DATABASE_URL,
+            purpose=MIGRATION_TEST_PURPOSE,
+            enforce_restricted_role=True,
+            expected_role=TEST_DB_USER,
+        )
         created = True
         yield schema_name
     finally:
         if created:
             exc_type, _, _ = sys.exc_info()
             try:
-                safe_drop_schema(engine, schema_name, MIGRATION_TEST_DB_URL, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+                safe_drop_schema(
+                    engine,
+                    schema_name,
+                    test_url,
+                    settings.DATABASE_URL,
+                    purpose=MIGRATION_TEST_PURPOSE,
+                    enforce_restricted_role=True,
+                    expected_role=TEST_DB_USER,
+                )
             except Exception as teardown_exc:
                 if exc_type is not None:
                     warnings.warn(
@@ -139,7 +232,7 @@ def test_safety_guard_rejects_missing_opt_in(monkeypatch):
 
     with pytest.raises(PermissionError, match="explicit opt-in required"):
         validate_migration_test_target(
-            test_url=MIGRATION_TEST_DB_URL,
+            test_url=get_migration_test_db_url(),
             app_url=settings.DATABASE_URL,
             enforce_opt_in=True,
         )
@@ -189,7 +282,7 @@ def test_safety_guard_accepts_valid_isolated_target(monkeypatch):
     """Verify that a distinct target database with opt-in enabled and provisioned sentinel passes validation."""
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
     validate_migration_test_target(
-        test_url=MIGRATION_TEST_DB_URL,
+        test_url=get_migration_test_db_url(),
         app_url=settings.DATABASE_URL,
         enforce_opt_in=True,
     )
@@ -198,8 +291,10 @@ def test_safety_guard_accepts_valid_isolated_target(monkeypatch):
 def test_teardown_preserves_original_test_failure(monkeypatch):
     """Verify that teardown cleans up the schema without masking an in-flight test assertion error."""
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
-    engine = create_engine(MIGRATION_TEST_DB_URL)
+    test_url = get_migration_test_db_url()
+    validate_migration_test_target(test_url, settings.DATABASE_URL)
+    engine = create_engine(test_url)
+    verify_migration_connected_role(engine)
 
     created_schema = None
     try:
@@ -236,8 +331,10 @@ def test_unrelated_schemas_and_public_remain_untouched(monkeypatch):
     4. Ensures control-schema creation, sentinel records, and testing run in an exception-safe structure.
     """
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
-    engine = create_engine(MIGRATION_TEST_DB_URL)
+    test_url = get_migration_test_db_url()
+    validate_migration_test_target(test_url, settings.DATABASE_URL)
+    engine = create_engine(test_url)
+    verify_migration_connected_role(engine)
 
     with managed_control_schema(engine, prefix="control") as control_schema:
         with engine.connect() as conn:
@@ -246,7 +343,7 @@ def test_unrelated_schemas_and_public_remain_untouched(monkeypatch):
             conn.commit()
 
         with isolated_test_schema(engine, prefix="migtest_iso") as test_schema:
-            alembic_cfg = configure_alembic_for_schema(MIGRATION_TEST_DB_URL, test_schema)
+            alembic_cfg = configure_alembic_for_schema(test_url, test_schema)
             command.upgrade(alembic_cfg, "head")
 
             inspector = inspect(engine)
@@ -292,11 +389,13 @@ def test_alembic_fresh_database_upgrade_head_and_foreign_keys(monkeypatch):
     7. Clean teardown dropping only the ephemeral test schema.
     """
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
-    engine = create_engine(MIGRATION_TEST_DB_URL)
+    test_url = get_migration_test_db_url()
+    validate_migration_test_target(test_url, settings.DATABASE_URL)
+    engine = create_engine(test_url)
+    verify_migration_connected_role(engine)
 
     with isolated_test_schema(engine, prefix="migtest_fresh") as test_schema:
-        alembic_cfg = configure_alembic_for_schema(MIGRATION_TEST_DB_URL, test_schema)
+        alembic_cfg = configure_alembic_for_schema(test_url, test_schema)
         command.upgrade(alembic_cfg, "head")
 
         inspector = inspect(engine)
@@ -333,11 +432,13 @@ def test_alembic_upgrade_from_previous_revision_and_downgrade(monkeypatch):
     5. Clean teardown dropping only the ephemeral test schema.
     """
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
-    engine = create_engine(MIGRATION_TEST_DB_URL)
+    test_url = get_migration_test_db_url()
+    validate_migration_test_target(test_url, settings.DATABASE_URL)
+    engine = create_engine(test_url)
+    verify_migration_connected_role(engine)
 
     with isolated_test_schema(engine, prefix="migtest_cycle") as test_schema:
-        alembic_cfg = configure_alembic_for_schema(MIGRATION_TEST_DB_URL, test_schema)
+        alembic_cfg = configure_alembic_for_schema(test_url, test_schema)
 
         command.upgrade(alembic_cfg, "d60b841ec91c")
         with engine.connect() as conn:

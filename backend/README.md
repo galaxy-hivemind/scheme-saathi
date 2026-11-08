@@ -75,23 +75,24 @@ Unit tests (such as JWT token validation, bcrypt password hashing, and settings 
 pytest tests/unit/ -v
 ```
 
-### Strategy A: Testcontainers PostgreSQL (Preferred)
+### Strategy A: Testcontainers PostgreSQL (Containerized Integration & API Tests)
 
-To run integration and API tests against an ephemeral, auto-destroyed PostgreSQL container:
+To run integration and API tests against an ephemeral, auto-destroyed PostgreSQL container (requires zero fallback database credentials):
 ```bash
-USE_TESTCONTAINERS=1 ALLOW_TEST_DB_RESET=1 pytest tests/ -v
+USE_TESTCONTAINERS=1 ALLOW_TEST_DB_RESET=1 pytest tests/integration/test_database.py tests/api/ -v
 ```
-> **Docker / Colima Requirement:** Ensure Docker or Colima is active (`colima status` / `docker info`). In Colima/macOS environments, `TESTCONTAINERS_RYUK_DISABLED=true` is handled automatically by `conftest.py`. The container URL is obtained dynamically from the container engine and is guaranteed never to touch `DATABASE_URL`.
+> **Architecture Scope & Limitation:** The current Testcontainers fixture architecture in `conftest.py` provisions and manages disposable containers for the database integration and API test suite. Migration test suites (`test_migrations.py`) and safety guard suites (`test_db_safety.py`) specifically target and validate local fallback database role configurations and fail-closed schema isolation against pre-provisioned databases.
 
 ### Strategy B: Dedicated Test Databases with Restricted Role (Fallback)
 
 When running against a local PostgreSQL instance, the test runner enforces strict database and role-level isolation:
 
 1. **Dedicated Test Runtime Role (`scheme_saathi_test_user`):**
-   - Has **NO CONNECT privilege** on the application database (`scheme_saathi`).
+   - Has **NO CONNECT privilege** on the application database (`scheme_saathi`), enforced via `session_preload_libraries = 'nonexistent_lib'`.
    - Has only **SELECT-only** access on the in-database sentinel (`_scheme_saathi_db_sentinel`).
    - The test runner **cannot** insert, update, delete, or recreate the sentinel table (`permission denied`).
    - The test runner **never** auto-provisions sentinels; a missing sentinel causes immediate failure.
+   - Requires explicit `TEST_DB_PASSWORD` configuration; default or placeholder passwords are strictly forbidden.
 
 2. **One-Time Administrative Setup:**
    Run administrative provisioning using admin credentials (`postgres`):
@@ -100,30 +101,28 @@ When running against a local PostgreSQL instance, the test runner enforces stric
    TEST_DB_PASSWORD="your_test_password" python -m app.core.db_safety setup-roles
 
    # 2. Provision regular test database sentinel:
-   ALLOW_TEST_DB_RESET=1 python -m app.core.db_safety provision --purpose regular_test
+   TEST_DB_PASSWORD="your_test_password" ALLOW_TEST_DB_RESET=1 python -m app.core.db_safety provision --purpose regular_test
 
    # 3. Provision migration test database sentinel:
-   ALLOW_MIGRATION_TESTS=1 python -m app.core.db_safety provision --purpose migration_test
+   TEST_DB_PASSWORD="your_test_password" ALLOW_MIGRATION_TESTS=1 python -m app.core.db_safety provision --purpose migration_test
    ```
 
 3. **Running Regular Test Suite:**
    ```bash
-   ALLOW_TEST_DB_RESET=1 pytest tests/ -v
+   TEST_DB_PASSWORD="your_test_password" ALLOW_TEST_DB_RESET=1 pytest tests/integration/test_database.py -v
    ```
 
 4. **Running Schema-Isolated Migration Tests:**
-   Migration tests run against dynamically generated ephemeral schemas (`migtest_<uuid>`) inside `scheme_saathi_migration_test` and require independent authorization:
+   Migration tests run against dynamically generated ephemeral schemas (`migtest_<uuid>`) inside `scheme_saathi_migration_test` using the restricted role:
    ```bash
-   ALLOW_MIGRATION_TESTS=1 \
-   MIGRATION_TEST_DB_URL=postgresql://scheme_saathi_test_user:your_test_password@localhost:5432/scheme_saathi_migration_test \
-   pytest tests/integration/test_migrations.py -v
+   TEST_DB_PASSWORD="your_test_password" ALLOW_MIGRATION_TESTS=1 pytest tests/integration/test_migrations.py -v
    ```
 
-### Full Test Suite Run
+### Full Fallback Test Suite Run
 
-To run all unit, integration, safety, and API tests:
+To run all unit, integration, safety, migration, and API tests:
 ```bash
-ALLOW_TEST_DB_RESET=1 ALLOW_MIGRATION_TESTS=1 pytest tests/ -v
+TEST_DB_PASSWORD="your_test_password" ALLOW_TEST_DB_RESET=1 ALLOW_MIGRATION_TESTS=1 pytest tests/ -v
 ```
 
 ### Fail-Closed Database Isolation Trust Model

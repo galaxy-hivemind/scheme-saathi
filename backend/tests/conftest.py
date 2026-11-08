@@ -37,13 +37,9 @@ import app.models  # noqa: F401
 USE_TESTCONTAINERS = os.getenv("USE_TESTCONTAINERS", "").strip().lower() in ("1", "true", "yes")
 
 TEST_DB_USER = os.getenv("TEST_DB_USER", TEST_RUNTIME_ROLE)
-TEST_DB_PASSWORD = os.getenv("TEST_DB_PASSWORD", "test_secure_password")
 TEST_DB_HOST = os.getenv("TEST_DB_HOST", "localhost")
 TEST_DB_PORT = os.getenv("TEST_DB_PORT", "5432")
 TEST_DB_NAME = os.getenv("TEST_DB_NAME", "scheme_saathi_test")
-
-DEFAULT_FALLBACK_URL = f"postgresql://{TEST_DB_USER}:{TEST_DB_PASSWORD}@{TEST_DB_HOST}:{TEST_DB_PORT}/{TEST_DB_NAME}"
-TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", DEFAULT_FALLBACK_URL)
 
 _test_container = None
 _active_test_engine = None
@@ -51,7 +47,11 @@ _active_session_factory = None
 
 
 def get_test_database_url() -> str:
-    """Return the active test database URL (from Testcontainers if active, else fallback URL)."""
+    """
+    Return the active test database URL (from Testcontainers if active, else fallback URL).
+    Fails immediately with a clear configuration error if required fallback credentials are absent.
+    Never constructs or returns a URL with an empty, default, or placeholder password.
+    """
     global _test_container
     if USE_TESTCONTAINERS:
         if _test_container is None:
@@ -75,7 +75,32 @@ def get_test_database_url() -> str:
             )
             return container_url
         return _test_container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-    return TEST_DATABASE_URL
+
+    # Fallback mode: require explicit credentials
+    from urllib.parse import quote_plus
+    from app.core.db_safety import normalize_db_url
+
+    explicit_url = os.getenv("TEST_DATABASE_URL")
+    if explicit_url:
+        parsed = normalize_db_url(explicit_url)
+        pwd = parsed.password
+        if not pwd or not pwd.strip() or pwd.strip() in ("placeholder", "password"):
+            raise ValueError(
+                "TEST_DATABASE_URL was provided without valid credentials. "
+                "An explicit, non-placeholder password is required for fallback execution."
+            )
+        return explicit_url
+
+    pwd = os.getenv("TEST_DB_PASSWORD")
+    if not pwd or not pwd.strip() or pwd.strip() in ("placeholder", "password"):
+        raise ValueError(
+            "Missing required fallback test database credentials: TEST_DB_PASSWORD must be "
+            "explicitly configured in the environment for fallback execution. "
+            "Example: TEST_DB_PASSWORD=<password> ALLOW_TEST_DB_RESET=1 pytest tests/ -v"
+        )
+
+    safe_pwd = quote_plus(pwd.strip())
+    return f"postgresql://{TEST_DB_USER}:{safe_pwd}@{TEST_DB_HOST}:{TEST_DB_PORT}/{TEST_DB_NAME}"
 
 
 def get_test_engine():
@@ -100,8 +125,15 @@ def get_session_factory():
     return _active_session_factory
 
 
-test_engine = get_test_engine()
-TestingSessionLocal = get_session_factory()
+def __getattr__(name: str):
+    """Provide lazy access to module-level properties so unit tests never trigger eager DB setup."""
+    if name == "TEST_DATABASE_URL":
+        return get_test_database_url()
+    if name == "test_engine":
+        return get_test_engine()
+    if name == "TestingSessionLocal":
+        return get_session_factory()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 @pytest.fixture(scope="session")

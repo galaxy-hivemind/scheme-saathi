@@ -88,7 +88,10 @@ class DatabaseIdentity:
     is_connected: bool = False
     current_database: str | None = None
     current_user: str | None = None
+    user_query_error: str | None = None
     is_superuser: bool = False
+    is_superuser_verified: bool = False
+    superuser_query_error: str | None = None
     system_identifier: str | None = None
     db_oid: int | None = None
     permission_denied_catalogs: bool = False
@@ -170,15 +173,23 @@ def inspect_database_identity(db_url: str, timeout_seconds: float = 3.0) -> Data
 
             # 2. current_user and is_superuser
             try:
-                identity.current_user = conn.execute(text("SELECT current_user;")).scalar()
-            except Exception:
-                pass
+                user_val = conn.execute(text("SELECT current_user;")).scalar()
+                if user_val:
+                    identity.current_user = str(user_val).strip()
+                else:
+                    identity.user_query_error = "SELECT current_user returned empty/None"
+            except Exception as e:
+                identity.user_query_error = f"Failed to query current_user: {e}"
 
             try:
                 super_val = conn.execute(text("SELECT current_setting('is_superuser');")).scalar()
-                identity.is_superuser = (str(super_val).strip().lower() == "on")
-            except Exception:
-                pass
+                if super_val is not None:
+                    identity.is_superuser = (str(super_val).strip().lower() == "on")
+                    identity.is_superuser_verified = True
+                else:
+                    identity.superuser_query_error = "current_setting('is_superuser') returned None"
+            except Exception as e:
+                identity.superuser_query_error = f"Failed to query current_setting('is_superuser'): {e}"
 
             # 3. pg_database oid
             try:
@@ -255,54 +266,119 @@ def setup_test_roles(
     """
     Administrative setup creating the dedicated test role with restricted permissions:
     - Never modifies PUBLIC permissions on scheme_saathi or any database.
+    - Explicitly establishes intended role attributes: LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS.
+    - Inspects and removes any administrative or unsafe role memberships (pg_auth_members).
     - Revokes CONNECT and privileges on application database (scheme_saathi) specifically for test_role.
     - Sets session_preload_libraries on scheme_saathi for test_role to guarantee connection refusal.
+    - Verifies that session_preload_libraries is actually applied in pg_db_role_setting.
     - Grants connect and DDL rights on disposable test databases.
     - Parameterized and validated SQL prevents SQL injection.
     - Explicitly fails if credentials are missing or grants cannot be applied.
     """
     validated_role = validate_pg_identifier(test_role, "test role name")
-    password = test_password or os.getenv("TEST_DB_PASSWORD")
-    if not password:
+    password = test_password if test_password is not None else os.getenv("TEST_DB_PASSWORD")
+    if not password or not password.strip() or password.strip() in ("placeholder", "password"):
         raise ValueError(
             "Test role password must be explicitly configured via argument (--test-password) "
-            "or TEST_DB_PASSWORD environment variable."
+            "or TEST_DB_PASSWORD environment variable (cannot be empty or placeholder)."
         )
 
     app_db = "scheme_saathi"
     engine = create_engine(admin_url, pool_pre_ping=True)
     with engine.connect() as conn:
-        # 1. Idempotently create or update the role with login and password
+        # 0. Reject targeting existing superusers or administrative roles
+        super_check = conn.execute(
+            text("SELECT rolsuper FROM pg_roles WHERE rolname = :role;"),
+            {"role": validated_role},
+        ).scalar()
+        if super_check is True or validated_role.lower() in ADMIN_ROLES:
+            raise ValueError(
+                f"Role '{validated_role}' has unexpected SUPERUSER or administrative privilege! "
+                f"Cannot use an administrative role as test runtime role."
+            )
+
+        # 1. Idempotently create or update the role with explicit restricted attributes
         role_exists = conn.execute(
             text("SELECT exists(SELECT 1 FROM pg_roles WHERE rolname = :role)"),
             {"role": validated_role},
         ).scalar()
 
-        safe_password = password.replace("'", "''")
+        safe_password = password.strip().replace("'", "''")
         if not role_exists:
-            conn.execute(text(f'CREATE ROLE "{validated_role}" WITH LOGIN PASSWORD \'{safe_password}\';'))
+            conn.execute(text(
+                f'CREATE ROLE "{validated_role}" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE '
+                f'NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD \'{safe_password}\';'
+            ))
         else:
-            conn.execute(text(f'ALTER ROLE "{validated_role}" WITH LOGIN PASSWORD \'{safe_password}\';'))
+            conn.execute(text(
+                f'ALTER ROLE "{validated_role}" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE '
+                f'NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD \'{safe_password}\';'
+            ))
 
-        # 2. Validate role attributes: must have LOGIN, must NOT be SUPERUSER
+        # 2. Inspect role memberships and inherited privileges; revoke unsafe memberships
+        memberships = conn.execute(
+            text("""
+                SELECT r.rolname, r.rolsuper, r.rolcreaterole, r.rolcreatedb
+                FROM pg_auth_members m
+                JOIN pg_roles r ON r.oid = m.roleid
+                JOIN pg_roles u ON u.oid = m.member
+                WHERE u.rolname = :role;
+            """),
+            {"role": validated_role},
+        ).mappings().fetchall()
+        for m in memberships:
+            member_name = m["rolname"]
+            if m["rolsuper"] or m["rolcreaterole"] or m["rolcreatedb"] or member_name.lower() in ADMIN_ROLES:
+                conn.execute(text(f'REVOKE "{member_name}" FROM "{validated_role}";'))
+
+        # 3. Validate role attributes: must have LOGIN, must NOT have any elevated attributes
         role_attrs = conn.execute(
-            text("SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles WHERE rolname = :role;"),
+            text(
+                "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, "
+                "rolreplication, rolbypassrls, rolinherit "
+                "FROM pg_roles WHERE rolname = :role;"
+            ),
             {"role": validated_role},
         ).mappings().first()
         if not role_attrs:
             raise RuntimeError(f"Role '{validated_role}' was not found after creation.")
         if role_attrs["rolsuper"]:
             raise ValueError(f"Role '{validated_role}' has unexpected SUPERUSER privilege! Cannot use superuser as test runtime role.")
+        if role_attrs["rolcreaterole"]:
+            raise ValueError(f"Role '{validated_role}' has unexpected CREATEROLE privilege! Cannot confer role creation.")
+        if role_attrs["rolcreatedb"]:
+            raise ValueError(f"Role '{validated_role}' has unexpected CREATEDB privilege! Cannot confer database creation.")
         if not role_attrs["rolcanlogin"]:
             raise ValueError(f"Role '{validated_role}' lacks LOGIN attribute!")
+        if role_attrs["rolreplication"]:
+            raise ValueError(f"Role '{validated_role}' has unexpected REPLICATION privilege!")
+        if role_attrs["rolbypassrls"]:
+            raise ValueError(f"Role '{validated_role}' has unexpected BYPASSRLS privilege!")
 
-        # 3. Explicitly revoke permissions from test_role on application database (scheme_saathi)
+        # 4. Explicitly revoke permissions from test_role on application database (scheme_saathi)
         # NOTE: NEVER REVOKE CONNECT FROM PUBLIC! Only revoke from this specific test role.
         conn.execute(text(f'REVOKE ALL ON DATABASE "{app_db}" FROM "{validated_role}";'))
         conn.execute(text(f'REVOKE CONNECT ON DATABASE "{app_db}" FROM "{validated_role}";'))
         conn.execute(text(f"ALTER ROLE \"{validated_role}\" IN DATABASE \"{app_db}\" SET session_preload_libraries = 'nonexistent_lib';"))
 
-        # 4. Grant necessary privileges on disposable test databases
+        # 5. Verify that the session_preload_libraries setting was actually applied
+        setting_applied = conn.execute(
+            text("""
+                SELECT exists(
+                    SELECT 1
+                    FROM pg_db_role_setting s
+                    JOIN pg_database d ON d.oid = s.setdatabase
+                    JOIN pg_roles r ON r.oid = s.setrole
+                    WHERE d.datname = :db AND r.rolname = :role
+                      AND 'session_preload_libraries=nonexistent_lib' = ANY(s.setconfig)
+                );
+            """),
+            {"db": app_db, "role": validated_role},
+        ).scalar()
+        if not setting_applied:
+            raise RuntimeError(f"Failed to apply session_preload_libraries lockout on database '{app_db}' for role '{validated_role}'.")
+
+        # 6. Grant necessary privileges on disposable test databases
         for test_db, needs_schema_create in [("scheme_saathi_test", False), ("scheme_saathi_migration_test", True)]:
             db_exists = conn.execute(
                 text("SELECT exists(SELECT 1 FROM pg_database WHERE datname = :db)"),
@@ -315,14 +391,14 @@ def setup_test_roles(
 
         conn.commit()
 
-    # 5. Verify configuration succeeded
+    # 7. Final Privilege & Attribute Verification
     with engine.connect() as conn:
-        verify_super = conn.execute(
-            text("SELECT rolsuper FROM pg_roles WHERE rolname = :role;"),
+        verify_attrs = conn.execute(
+            text("SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = :role;"),
             {"role": validated_role},
-        ).scalar()
-        if verify_super is True:
-            raise RuntimeError(f"Security check failed: role '{validated_role}' is a superuser.")
+        ).mappings().first()
+        if verify_attrs["rolsuper"] or verify_attrs["rolcreaterole"] or verify_attrs["rolcreatedb"]:
+            raise RuntimeError(f"Security verification failed: role '{validated_role}' retains elevated privileges.")
 
     engine.dispose()
 
@@ -569,18 +645,42 @@ def verify_database_isolation(
             f"Rejection is unconditional across all hostnames, ports, driver schemes, and proxy endpoints."
         )
 
-    # 7. Restricted Runtime Role Enforcement
+    # 7. Restricted Runtime Role Enforcement (Fail-Closed)
     if enforce_restricted_role:
-        check_role = expected_role or TEST_RUNTIME_ROLE
-        if target_ident.is_superuser or (target_ident.current_user and target_ident.current_user.lower() in ADMIN_ROLES):
+        if not expected_role or not isinstance(expected_role, str) or not expected_role.strip():
+            raise ValueError(
+                "Restricted role enforcement failed: expected_role must be explicitly specified "
+                "when enforce_restricted_role=True. Missing expected_role is forbidden."
+            )
+        expected_role_clean = expected_role.strip()
+
+        # Require a non-empty, successfully verified current_user
+        if target_ident.user_query_error or not target_ident.current_user:
+            raise RuntimeError(
+                f"Destructive operation rejected: failed to query or verify target database current_user "
+                f"({target_ident.user_query_error or 'user is empty'}). An unverified role cannot be trusted."
+            )
+
+        # Require a successfully verified superuser status
+        if target_ident.superuser_query_error or not target_ident.is_superuser_verified:
+            raise RuntimeError(
+                f"Destructive operation rejected: failed to query or verify target superuser status "
+                f"({target_ident.superuser_query_error or 'superuser status unverified'}). "
+                f"An unverified superuser status cannot be trusted."
+            )
+
+        # Reject superusers and administrative roles
+        if target_ident.is_superuser or target_ident.current_user.lower() in ADMIN_ROLES:
             raise PermissionError(
                 f"Destructive operation rejected: target connection is using administrative/superuser role "
-                f"'{target_ident.current_user}'. Fallback execution must use the restricted runtime role '{check_role}'."
+                f"'{target_ident.current_user}'. Fallback execution must use the restricted runtime role '{expected_role_clean}'."
             )
-        if target_ident.current_user and target_ident.current_user.lower() != check_role.lower():
+
+        # Require exact equality between actual current_user and expected_role
+        if target_ident.current_user != expected_role_clean:
             raise PermissionError(
                 f"Destructive operation rejected: target connected as '{target_ident.current_user}', "
-                f"expected restricted runtime role '{check_role}'."
+                f"expected restricted runtime role '{expected_role_clean}'."
             )
 
     # 8. Physical Cluster and Catalog Comparison
@@ -782,11 +882,29 @@ def main():
     args = parser.parse_args()
 
     if args.command == "provision":
-        target = args.target_url or (
-            os.getenv("TEST_DATABASE_URL", "postgresql://scheme_saathi_test_user:test_secure_password@localhost:5432/scheme_saathi_test")
-            if args.purpose == REGULAR_TEST_PURPOSE
-            else os.getenv("MIGRATION_TEST_DB_URL", "postgresql://scheme_saathi_test_user:test_secure_password@localhost:5432/scheme_saathi_migration_test")
-        )
+        target = args.target_url
+        if not target:
+            if args.purpose == REGULAR_TEST_PURPOSE:
+                target = os.getenv("TEST_DATABASE_URL")
+                if not target:
+                    pwd = os.getenv("TEST_DB_PASSWORD")
+                    if pwd and pwd.strip():
+                        target = f"postgresql://{args.grant_role or TEST_RUNTIME_ROLE}:{pwd.strip()}@localhost:5432/scheme_saathi_test"
+            else:
+                target = os.getenv("MIGRATION_TEST_DB_URL")
+                if not target:
+                    pwd = os.getenv("TEST_DB_PASSWORD")
+                    if pwd and pwd.strip():
+                        target = f"postgresql://{args.grant_role or TEST_RUNTIME_ROLE}:{pwd.strip()}@localhost:5432/scheme_saathi_migration_test"
+
+        if not target:
+            print(
+                "Error: Target database URL must be provided via --target-url, or configured via "
+                "TEST_DATABASE_URL / MIGRATION_TEST_DB_URL / TEST_DB_PASSWORD environment variables.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
         app = args.app_url or os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/scheme_saathi")
 
         print(f"Provisioning disposable sentinel for {args.purpose} on: {mask_url_password(target)}")
