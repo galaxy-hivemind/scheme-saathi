@@ -15,6 +15,41 @@
 
 ---
 
+## Test Database Isolation & Sentinel Trust Model
+
+To prevent any possibility of destructive testing operations (`drop_all`, `create_all`, `drop schema`) impacting the production or application database, Scheme Saathi implements a **fail-closed verifiable trust model** (`backend/app/core/db_safety.py`):
+
+### 1. In-Database Disposable Sentinel
+Every disposable test database contains a dedicated sentinel table (`_scheme_saathi_db_sentinel`) initialized with:
+- `marker_key`: `'scheme_saathi_test_isolation'`
+- `purpose`: `'regular_test'` or `'migration_test'`
+- `is_disposable`: `TRUE`
+- `database_name`: Strictly verified against `current_database()`
+
+If this record is missing, invalid, or marks `is_disposable = FALSE`, all destructive operations fail closed immediately.
+
+### 2. Multi-Layer Anti-Application DB Protection
+Regardless of environment variables, the system verifies that the target does not collide with `DATABASE_URL`:
+- Normalizes URL schemes (`postgresql`, `postgresql+psycopg`, `postgresql+psycopg2`, `postgresql+asyncpg`, `postgres`).
+- Resolves hostnames and IP addresses (`localhost`, `127.0.0.1`, `0.0.0.0`).
+- Matches ports and database names.
+- Compares live PostgreSQL catalog OIDs and cluster identifiers (`pg_database.oid`, `pg_control_system()`).
+- Rejects application database targets even if a sentinel was artificially placed in them.
+
+### 3. Independent Authorization Scopes
+- `ALLOW_TEST_DB_RESET=1`: Authorizes regular test fixture setup/teardown on disposable test databases.
+- `ALLOW_MIGRATION_TESTS=1`: Authorizes schema-isolated migration tests.
+- Cross-role authorization is strictly rejected.
+
+### 4. Centralized Destructive Execution Gateways
+Destructive DDL calls cannot be called directly; they must route through verified gatekeeper functions:
+- `safe_drop_all(engine, metadata, target_url, app_url, purpose)`
+- `safe_create_all(engine, metadata, target_url, app_url, purpose)`
+- `safe_create_schema(engine, schema_name, target_url, app_url, purpose)`
+- `safe_drop_schema(engine, schema_name, target_url, app_url, purpose)` (strictly forbids dropping `public`, `pg_catalog`, or `information_schema`)
+
+---
+
 ## Implemented in Phase 1
 
 1. **`users`** — System user accounts and authentication state.

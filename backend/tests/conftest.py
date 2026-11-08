@@ -1,7 +1,7 @@
 """
 Pytest fixtures for Scheme Saathi test suite.
 Configures isolated test database sessions against the local PostgreSQL test instance.
-Enforces multi-layer safety validation and explicit opt-in to protect application databases.
+Enforces multi-layer safety validation, in-database sentinel verification, and explicit opt-in.
 """
 import os
 import pytest
@@ -10,7 +10,14 @@ from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.core.db_safety import validate_database_target, REGULAR_TEST_OPT_IN_VARS
+from app.core.db_safety import (
+    safe_drop_all,
+    safe_create_all,
+    verify_database_isolation,
+    provision_test_database_sentinel,
+    REGULAR_TEST_PURPOSE,
+    REGULAR_TEST_OPT_IN_VARS,
+)
 from app.main import app as fastapi_app
 from app.database.base import Base
 from app.database.dependencies import get_db
@@ -39,33 +46,49 @@ def setup_test_db():
     Re-validates target safety immediately before teardown and refuses to drop
     tables if setup failed.
     """
-    # 1. Require explicit opt-in and validate database identity before destructive setup
-    validate_database_target(
-        target_url=TEST_DATABASE_URL,
-        app_url=settings.DATABASE_URL,
-        target_label="regular test database",
-        enforce_opt_in=True,
-        opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
+    # 1. Require explicit authorization before doing anything
+    is_authorized = any(
+        os.getenv(v, "").strip().lower() in ("1", "true", "yes", "on")
+        for v in REGULAR_TEST_OPT_IN_VARS
     )
+    if not is_authorized:
+        raise PermissionError(
+            f"Destructive operation on regular test database rejected: explicit opt-in required. "
+            f"Set one of {list(REGULAR_TEST_OPT_IN_VARS)} to '1' before running. "
+            f"Example: {REGULAR_TEST_OPT_IN_VARS[0]}=1 pytest tests/ -v"
+        )
 
+    # 2. Ensure test database sentinel is provisioned if valid disposable database
+    try:
+        verify_database_isolation(
+            target_url=TEST_DATABASE_URL,
+            app_url=settings.DATABASE_URL,
+            expected_purpose=REGULAR_TEST_PURPOSE,
+            enforce_opt_in=True,
+        )
+    except ValueError as e:
+        if "lacks the required in-database disposable sentinel record" in str(e):
+            # Target is a confirmed non-application database needing sentinel initialization
+            provision_test_database_sentinel(
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+                enforce_opt_in=True,
+            )
+        else:
+            raise
+
+    # 3. Perform centralized safe setup
     setup_succeeded = False
     try:
-        Base.metadata.drop_all(bind=test_engine)
-        Base.metadata.create_all(bind=test_engine)
+        safe_drop_all(test_engine, Base.metadata, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+        safe_create_all(test_engine, Base.metadata, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
         setup_succeeded = True
         yield
     finally:
-        # 2. Only teardown if setup actually succeeded (do not silently drop if setup failed)
+        # 4. Only teardown if setup actually succeeded (do not drop if setup failed)
         if setup_succeeded:
-            # 3. Validate safety again immediately before teardown
-            validate_database_target(
-                target_url=TEST_DATABASE_URL,
-                app_url=settings.DATABASE_URL,
-                target_label="regular test database",
-                enforce_opt_in=True,
-                opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
-            )
-            Base.metadata.drop_all(bind=test_engine)
+            safe_drop_all(test_engine, Base.metadata, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
 
 
 @pytest.fixture
