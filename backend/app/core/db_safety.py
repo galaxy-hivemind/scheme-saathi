@@ -7,25 +7,28 @@ against the application database or any unverified/ambiguous database.
 
 Trust Model:
 1. Verifiable Database Identity: Uses PostgreSQL live catalogs (current_database, db_oid,
-   cluster system_identifier) combined with an independently verified in-database sentinel.
+   cluster system_identifier, current_user) combined with an in-database sentinel.
 2. In-Database Sentinel Contract: Dedicated table `_scheme_saathi_db_sentinel` provisioned
    by administrative credentials with explicit role ('regular_test' vs 'migration_test')
    and is_disposable=TRUE. Test runtime roles are granted SELECT-only access and cannot
    modify, delete, or recreate the sentinel.
-3. Fail-Closed on Ambiguity: Missing, inaccessible, conflicting, or unverified identity
+3. Restricted Test Runtime Role: Fallback test fixtures must connect as `scheme_saathi_test_user`
+   (verified via current_user). Connections as postgres/superusers are rejected.
+4. Fail-Closed on Ambiguity: Missing, inaccessible, conflicting, or unverified identity
    fails closed before any destructive SQL can execute. If the application database cannot
    be reached to verify isolation, the system fails closed.
-4. Unconditional Connected Database Comparison: If the target's connected current_database()
+5. Unconditional Connected Database Comparison: If the target's connected current_database()
    matches the application database name, it is unconditionally rejected across all
    hostnames, ports, driver schemes, and proxy endpoints.
-5. Separate Authorization: Authorization environment variables (ALLOW_TEST_DB_RESET,
+6. Separate Authorization: Authorization environment variables (ALLOW_TEST_DB_RESET,
    ALLOW_MIGRATION_TESTS) are strictly separate from identity and never bypass verification.
-6. Centralized Execution: All destructive DDL operations pass through auditable gatekeepers.
+7. Centralized Execution: All destructive DDL operations pass through auditable gatekeepers.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import argparse
 import os
+import re
 import socket
 import sys
 from typing import Sequence, Any, Callable
@@ -52,9 +55,27 @@ MIGRATION_TEST_OPT_IN_VARS = (
 SENTINEL_TABLE_NAME = "_scheme_saathi_db_sentinel"
 SENTINEL_MARKER_KEY = "scheme_saathi_test_isolation"
 TEST_RUNTIME_ROLE = "scheme_saathi_test_user"
+ADMIN_ROLES = {"postgres", "root", "admin", "superuser"}
 
 DISPOSABLE_TEST_MARKERS = ("test", "disposable", "migtest", "migration_test")
 PROTECTED_SYSTEM_SCHEMAS = ("public", "information_schema", "pg_catalog", "pg_toast")
+
+IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,62}$")
+
+
+def validate_pg_identifier(name: str, label: str = "identifier") -> str:
+    """Validate that a string is a safe, valid PostgreSQL identifier to prevent SQL injection."""
+    if not name or not isinstance(name, str) or not IDENTIFIER_REGEX.match(name.strip()):
+        raise ValueError(f"Invalid or unsafe PostgreSQL {label} '{name}'. Must be alphanumeric/underscores only.")
+    return name.strip()
+
+
+def mask_url_password(url_str: str) -> str:
+    """Render a database URL safely with password hidden."""
+    try:
+        return normalize_db_url(url_str).render_as_string(hide_password=True)
+    except Exception:
+        return "[unparseable-url]"
 
 
 @dataclass
@@ -66,6 +87,8 @@ class DatabaseIdentity:
     port: int
     is_connected: bool = False
     current_database: str | None = None
+    current_user: str | None = None
+    is_superuser: bool = False
     system_identifier: str | None = None
     db_oid: int | None = None
     permission_denied_catalogs: bool = False
@@ -113,6 +136,7 @@ def normalize_db_url(url_str: str) -> URL:
 def inspect_database_identity(db_url: str, timeout_seconds: float = 3.0) -> DatabaseIdentity:
     """
     Inspects live PostgreSQL database catalog identity.
+    Queries current_database(), current_user, is_superuser, db_oid, and system_identifier.
     Distinguishes permission limitations from actual connectivity failures.
     Does not assume physical identity verification succeeded if catalogs cannot be read.
     """
@@ -144,7 +168,19 @@ def inspect_database_identity(db_url: str, timeout_seconds: float = 3.0) -> Data
                 identity.connection_error = f"Failed to query current_database(): {e}"
                 return identity
 
-            # 2. pg_database oid
+            # 2. current_user and is_superuser
+            try:
+                identity.current_user = conn.execute(text("SELECT current_user;")).scalar()
+            except Exception:
+                pass
+
+            try:
+                super_val = conn.execute(text("SELECT current_setting('is_superuser');")).scalar()
+                identity.is_superuser = (str(super_val).strip().lower() == "on")
+            except Exception:
+                pass
+
+            # 3. pg_database oid
             try:
                 identity.db_oid = conn.execute(
                     text("SELECT oid FROM pg_database WHERE datname = current_database();")
@@ -156,7 +192,7 @@ def inspect_database_identity(db_url: str, timeout_seconds: float = 3.0) -> Data
                 else:
                     identity.connection_error = f"Failed to query pg_database oid: {e}"
 
-            # 3. pg_control_system()
+            # 4. pg_control_system()
             try:
                 identity.system_identifier = conn.execute(
                     text("SELECT system_identifier FROM pg_control_system();")
@@ -211,6 +247,86 @@ def read_sentinel_record(conn) -> SentinelRecord | None:
     )
 
 
+def setup_test_roles(
+    admin_url: str,
+    test_role: str = TEST_RUNTIME_ROLE,
+    test_password: str | None = None,
+) -> None:
+    """
+    Administrative setup creating the dedicated test role with restricted permissions:
+    - Never modifies PUBLIC permissions on scheme_saathi or any database.
+    - Revokes CONNECT and privileges on application database (scheme_saathi) specifically for test_role.
+    - Sets session_preload_libraries on scheme_saathi for test_role to guarantee connection refusal.
+    - Grants connect and DDL rights on disposable test databases.
+    - Parameterized and validated SQL prevents SQL injection.
+    - Explicitly fails if credentials are missing or grants cannot be applied.
+    """
+    validated_role = validate_pg_identifier(test_role, "test role name")
+    password = test_password or os.getenv("TEST_DB_PASSWORD")
+    if not password:
+        raise ValueError(
+            "Test role password must be explicitly configured via argument (--test-password) "
+            "or TEST_DB_PASSWORD environment variable."
+        )
+
+    app_db = "scheme_saathi"
+    engine = create_engine(admin_url, pool_pre_ping=True)
+    with engine.connect() as conn:
+        # 1. Idempotently create or update the role with login and password
+        role_exists = conn.execute(
+            text("SELECT exists(SELECT 1 FROM pg_roles WHERE rolname = :role)"),
+            {"role": validated_role},
+        ).scalar()
+
+        safe_password = password.replace("'", "''")
+        if not role_exists:
+            conn.execute(text(f'CREATE ROLE "{validated_role}" WITH LOGIN PASSWORD \'{safe_password}\';'))
+        else:
+            conn.execute(text(f'ALTER ROLE "{validated_role}" WITH LOGIN PASSWORD \'{safe_password}\';'))
+
+        # 2. Validate role attributes: must have LOGIN, must NOT be SUPERUSER
+        role_attrs = conn.execute(
+            text("SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles WHERE rolname = :role;"),
+            {"role": validated_role},
+        ).mappings().first()
+        if not role_attrs:
+            raise RuntimeError(f"Role '{validated_role}' was not found after creation.")
+        if role_attrs["rolsuper"]:
+            raise ValueError(f"Role '{validated_role}' has unexpected SUPERUSER privilege! Cannot use superuser as test runtime role.")
+        if not role_attrs["rolcanlogin"]:
+            raise ValueError(f"Role '{validated_role}' lacks LOGIN attribute!")
+
+        # 3. Explicitly revoke permissions from test_role on application database (scheme_saathi)
+        # NOTE: NEVER REVOKE CONNECT FROM PUBLIC! Only revoke from this specific test role.
+        conn.execute(text(f'REVOKE ALL ON DATABASE "{app_db}" FROM "{validated_role}";'))
+        conn.execute(text(f'REVOKE CONNECT ON DATABASE "{app_db}" FROM "{validated_role}";'))
+        conn.execute(text(f"ALTER ROLE \"{validated_role}\" IN DATABASE \"{app_db}\" SET session_preload_libraries = 'nonexistent_lib';"))
+
+        # 4. Grant necessary privileges on disposable test databases
+        for test_db, needs_schema_create in [("scheme_saathi_test", False), ("scheme_saathi_migration_test", True)]:
+            db_exists = conn.execute(
+                text("SELECT exists(SELECT 1 FROM pg_database WHERE datname = :db)"),
+                {"db": test_db},
+            ).scalar()
+            if db_exists:
+                conn.execute(text(f'GRANT CONNECT, TEMPORARY ON DATABASE "{test_db}" TO "{validated_role}";'))
+                if needs_schema_create:
+                    conn.execute(text(f'GRANT CREATE ON DATABASE "{test_db}" TO "{validated_role}";'))
+
+        conn.commit()
+
+    # 5. Verify configuration succeeded
+    with engine.connect() as conn:
+        verify_super = conn.execute(
+            text("SELECT rolsuper FROM pg_roles WHERE rolname = :role;"),
+            {"role": validated_role},
+        ).scalar()
+        if verify_super is True:
+            raise RuntimeError(f"Security check failed: role '{validated_role}' is a superuser.")
+
+    engine.dispose()
+
+
 def provision_test_database_sentinel(
     target_url: str,
     app_url: str,
@@ -233,6 +349,9 @@ def provision_test_database_sentinel(
             f"Cannot provision test database sentinel for {purpose}: explicit opt-in required. "
             f"Set one of {list(required_vars)} to '1' before provisioning."
         )
+
+    # Validate grant_role if provided
+    validated_grant_role = validate_pg_identifier(grant_role, "grant role") if grant_role else None
 
     # 2. Strict Application Database Non-Collision Check
     target_parsed = normalize_db_url(target_url)
@@ -311,55 +430,40 @@ def provision_test_database_sentinel(
                 "cluster_system_id": target_ident.system_identifier,
             },
         )
-        # 5. Lock down sentinel permissions for test runtime role (Read-only)
-        if grant_role:
-            try:
-                conn.execute(text(f"""
-                    DO $$
-                    BEGIN
-                        IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{grant_role}') THEN
-                            REVOKE ALL ON TABLE {SENTINEL_TABLE_NAME} FROM {grant_role};
-                            GRANT SELECT ON TABLE {SENTINEL_TABLE_NAME} TO {grant_role};
-                        END IF;
-                    END
-                    $$;
-                """))
-            except Exception:
-                pass
-        conn.commit()
-    engine.dispose()
 
+        # 5. Lock down sentinel permissions for test runtime role (SELECT-only)
+        if validated_grant_role:
+            role_exists = conn.execute(
+                text("SELECT exists(SELECT 1 FROM pg_roles WHERE rolname = :role)"),
+                {"role": validated_grant_role},
+            ).scalar()
+            if role_exists:
+                conn.execute(text(f'REVOKE ALL ON TABLE "{SENTINEL_TABLE_NAME}" FROM "{validated_grant_role}";'))
+                conn.execute(text(f'GRANT SELECT ON TABLE "{SENTINEL_TABLE_NAME}" TO "{validated_grant_role}";'))
 
-def setup_test_roles(admin_url: str, test_role: str = TEST_RUNTIME_ROLE, test_password: str = "test_secure_password") -> None:
-    """
-    Administrative setup creating the dedicated test role with restricted permissions:
-    - No permission to connect to or touch application database (scheme_saathi).
-    - Granted connect and DDL rights on test databases.
-    - SELECT-only access on the sentinel table.
-    """
-    app_db = "scheme_saathi"
-    engine = create_engine(admin_url, pool_pre_ping=True)
-    with engine.connect() as conn:
-        # Create test role if not exists
-        conn.execute(text(f"""
-            DO $$
-            BEGIN
-                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{test_role}') THEN
-                    CREATE ROLE {test_role} WITH LOGIN PASSWORD '{test_password}';
-                END IF;
-            END
-            $$;
-        """))
-        # Revoke access to application database
-        try:
-            conn.execute(text(f"""
-                REVOKE ALL ON DATABASE {app_db} FROM {test_role};
-                REVOKE CONNECT ON DATABASE {app_db} FROM {test_role};
-                REVOKE CONNECT ON DATABASE {app_db} FROM PUBLIC;
-            """))
-        except Exception:
-            pass
         conn.commit()
+
+    # Verify table privilege lockdown if role exists
+    if validated_grant_role:
+        with engine.connect() as conn:
+            role_exists = conn.execute(
+                text("SELECT exists(SELECT 1 FROM pg_roles WHERE rolname = :role)"),
+                {"role": validated_grant_role},
+            ).scalar()
+            if role_exists:
+                can_select = conn.execute(
+                    text("SELECT has_table_privilege(:role, :tbl, 'SELECT')"),
+                    {"role": validated_grant_role, "tbl": SENTINEL_TABLE_NAME},
+                ).scalar()
+                can_update = conn.execute(
+                    text("SELECT has_table_privilege(:role, :tbl, 'UPDATE')"),
+                    {"role": validated_grant_role, "tbl": SENTINEL_TABLE_NAME},
+                ).scalar()
+                if not can_select:
+                    raise RuntimeError(f"Role '{validated_grant_role}' lacks SELECT on sentinel table.")
+                if can_update:
+                    raise RuntimeError(f"Role '{validated_grant_role}' has unsafe UPDATE on sentinel table!")
+
     engine.dispose()
 
 
@@ -369,10 +473,12 @@ def verify_database_isolation(
     expected_purpose: str = REGULAR_TEST_PURPOSE,
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] | None = None,
+    enforce_restricted_role: bool = False,
+    expected_role: str | None = None,
 ) -> DatabaseIdentity:
     """
     Central safety validator:
-    Establishes verified database isolation and authorization. Fails closed before any
+    Establishes verified database isolation, role restrictions, and authorization. Fails closed before any
     destructive action can occur.
 
     Proof requirements:
@@ -382,13 +488,11 @@ def verify_database_isolation(
     3. Unconditional Actual Connected Database Name Comparison: The target's connected
        current_database() cannot match the application database name under any circumstance
        (regardless of hostname, port, driver scheme, proxy, or alias).
-    4. Physical Identity: If cluster identifier is available, verify target does not share OID
-       or connected database name with application database. Missing cluster identity is never
-       treated as proof of separation.
+    4. Restricted Runtime Role Enforcement: When enforce_restricted_role=True, verifies
+       connected current_user against expected_role and rejects administrative/superuser roles.
     5. In-Database Sentinel Contract: Dedicated table `_scheme_saathi_db_sentinel` must exist,
        have is_disposable=TRUE, match expected_purpose, and match connected database name.
        A missing sentinel causes an immediate failure; test fixtures NEVER auto-provision it.
-    6. Anti-Bypass Guard: If target matches application DB identity, presence of sentinel is rejected.
     """
     # 1. Authorization check
     if opt_in_env_vars is None:
@@ -434,11 +538,10 @@ def verify_database_isolation(
         )
 
     # 4. Live Application Database Identity Check
-    # If the application database cannot be reached during verification, fail closed!
     app_ident = inspect_database_identity(app_url)
     if not app_ident.is_connected:
         raise RuntimeError(
-            f"Application database at '{app_url}' is unreachable ({app_ident.connection_error}). "
+            f"Application database at '{mask_url_password(app_url)}' is unreachable ({app_ident.connection_error}). "
             f"Cannot verify target isolation against active application database. Failing closed."
         )
 
@@ -459,8 +562,6 @@ def verify_database_isolation(
     target_actual_db = (target_ident.current_database or "").strip().lower()
 
     # 6. Unconditional Connected Database Name Comparison
-    # Reject when target connected database matches application connected database,
-    # regardless of hostnames, ports, driver schemes, or proxy endpoints!
     if target_actual_db == app_actual_db:
         raise ValueError(
             f"Unsafe target for {expected_purpose}: Connected database name '{target_ident.current_database}' "
@@ -468,7 +569,21 @@ def verify_database_isolation(
             f"Rejection is unconditional across all hostnames, ports, driver schemes, and proxy endpoints."
         )
 
-    # 7. Physical Cluster and Catalog Comparison
+    # 7. Restricted Runtime Role Enforcement
+    if enforce_restricted_role:
+        check_role = expected_role or TEST_RUNTIME_ROLE
+        if target_ident.is_superuser or (target_ident.current_user and target_ident.current_user.lower() in ADMIN_ROLES):
+            raise PermissionError(
+                f"Destructive operation rejected: target connection is using administrative/superuser role "
+                f"'{target_ident.current_user}'. Fallback execution must use the restricted runtime role '{check_role}'."
+            )
+        if target_ident.current_user and target_ident.current_user.lower() != check_role.lower():
+            raise PermissionError(
+                f"Destructive operation rejected: target connected as '{target_ident.current_user}', "
+                f"expected restricted runtime role '{check_role}'."
+            )
+
+    # 8. Physical Cluster and Catalog Comparison
     if target_ident.system_identifier and app_ident.system_identifier:
         if target_ident.system_identifier == app_ident.system_identifier:
             if target_ident.db_oid and app_ident.db_oid and target_ident.db_oid == app_ident.db_oid:
@@ -478,9 +593,7 @@ def verify_database_isolation(
                     f"(cluster={target_ident.system_identifier}, oid={target_ident.db_oid})."
                 )
 
-    # 8. In-Database Sentinel Verification
-    # Must exist, be disposable, match expected purpose, and match connected DB name.
-    # A missing sentinel fails closed immediately. Test fixtures never auto-provision it.
+    # 9. In-Database Sentinel Verification
     engine = create_engine(target_url, pool_pre_ping=True)
     with engine.connect() as conn:
         sentinel = read_sentinel_record(conn)
@@ -513,13 +626,6 @@ def verify_database_isolation(
             f"does not match actual connected database '{target_ident.current_database}'. Failing closed."
         )
 
-    # 9. Anti-Bypass Guard: Verify application database cannot be bypassed by an artificial test sentinel
-    if target_actual_db == app_actual_db:
-        raise ValueError(
-            f"Application database identity cannot be bypassed by a test-database marker alone! "
-            f"Database '{target_ident.current_database}' is identified as the application database."
-        )
-
     return target_ident
 
 
@@ -531,12 +637,20 @@ def safe_drop_all(
     target_url: str,
     app_url: str,
     purpose: str = REGULAR_TEST_PURPOSE,
+    enforce_restricted_role: bool = False,
+    expected_role: str | None = None,
 ) -> None:
     """
     Centralized gatekeeper for metadata.drop_all().
     Re-verifies identity and authorization immediately prior to dropping tables.
     """
-    verify_database_isolation(target_url, app_url, expected_purpose=purpose)
+    verify_database_isolation(
+        target_url,
+        app_url,
+        expected_purpose=purpose,
+        enforce_restricted_role=enforce_restricted_role,
+        expected_role=expected_role,
+    )
     metadata.drop_all(bind=engine)
 
 
@@ -546,12 +660,20 @@ def safe_create_all(
     target_url: str,
     app_url: str,
     purpose: str = REGULAR_TEST_PURPOSE,
+    enforce_restricted_role: bool = False,
+    expected_role: str | None = None,
 ) -> None:
     """
     Centralized gatekeeper for metadata.create_all().
     Verifies identity and authorization immediately prior to creating tables.
     """
-    verify_database_isolation(target_url, app_url, expected_purpose=purpose)
+    verify_database_isolation(
+        target_url,
+        app_url,
+        expected_purpose=purpose,
+        enforce_restricted_role=enforce_restricted_role,
+        expected_role=expected_role,
+    )
     metadata.create_all(bind=engine)
 
 
@@ -561,14 +683,23 @@ def safe_create_schema(
     target_url: str,
     app_url: str,
     purpose: str = MIGRATION_TEST_PURPOSE,
+    enforce_restricted_role: bool = False,
+    expected_role: str | None = None,
 ) -> None:
     """
     Centralized gatekeeper for schema creation.
     Requires verified migration test database identity and authorization.
     """
-    verify_database_isolation(target_url, app_url, expected_purpose=purpose)
+    validated_schema = validate_pg_identifier(schema_name, "schema name")
+    verify_database_isolation(
+        target_url,
+        app_url,
+        expected_purpose=purpose,
+        enforce_restricted_role=enforce_restricted_role,
+        expected_role=expected_role,
+    )
     with engine.connect() as conn:
-        conn.execute(text(f'CREATE SCHEMA "{schema_name}";'))
+        conn.execute(text(f'CREATE SCHEMA "{validated_schema}";'))
         conn.commit()
 
 
@@ -578,6 +709,8 @@ def safe_drop_schema(
     target_url: str,
     app_url: str,
     purpose: str = MIGRATION_TEST_PURPOSE,
+    enforce_restricted_role: bool = False,
+    expected_role: str | None = None,
 ) -> None:
     """
     Centralized gatekeeper for schema drops.
@@ -592,9 +725,16 @@ def safe_drop_schema(
     if not any(schema_name.startswith(p) for p in ("migtest_", "control_", "test_")):
         raise ValueError(f"Refusing to drop schema '{schema_name}': not an explicitly owned test schema.")
 
-    verify_database_isolation(target_url, app_url, expected_purpose=purpose)
+    validated_schema = validate_pg_identifier(schema_name, "schema name")
+    verify_database_isolation(
+        target_url,
+        app_url,
+        expected_purpose=purpose,
+        enforce_restricted_role=enforce_restricted_role,
+        expected_role=expected_role,
+    )
     with engine.connect() as conn:
-        conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE;'))
+        conn.execute(text(f'DROP SCHEMA IF EXISTS "{validated_schema}" CASCADE;'))
         conn.commit()
 
 
@@ -606,6 +746,8 @@ def validate_database_target(
     target_label: str = "test database",
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] = REGULAR_TEST_OPT_IN_VARS,
+    enforce_restricted_role: bool = False,
+    expected_role: str | None = None,
 ) -> None:
     """Compatibility bridge routing callers to verify_database_isolation."""
     purpose = REGULAR_TEST_PURPOSE if "migration" not in target_label.lower() else MIGRATION_TEST_PURPOSE
@@ -615,6 +757,8 @@ def validate_database_target(
         expected_purpose=purpose,
         enforce_opt_in=enforce_opt_in,
         opt_in_env_vars=opt_in_env_vars,
+        enforce_restricted_role=enforce_restricted_role,
+        expected_role=expected_role,
     )
 
 
@@ -631,25 +775,31 @@ def main():
     prov_parser.add_argument("--grant-role", default=TEST_RUNTIME_ROLE, help="Test runtime role to grant read-only access")
 
     role_parser = subparsers.add_parser("setup-roles", help="Setup test runtime role with restricted permissions")
-    role_parser.add_argument("--admin-url", default="postgresql://postgres:postgres@localhost:5432/postgres", help="PostgreSQL admin URL")
+    role_parser.add_argument("--admin-url", default=None, help="PostgreSQL admin URL")
     role_parser.add_argument("--test-role", default=TEST_RUNTIME_ROLE, help="Name of test role to configure")
+    role_parser.add_argument("--test-password", default=None, help="Password for test role")
 
     args = parser.parse_args()
 
     if args.command == "provision":
         target = args.target_url or (
-            os.getenv("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/scheme_saathi_test")
+            os.getenv("TEST_DATABASE_URL", "postgresql://scheme_saathi_test_user:test_secure_password@localhost:5432/scheme_saathi_test")
             if args.purpose == REGULAR_TEST_PURPOSE
-            else os.getenv("MIGRATION_TEST_DB_URL", "postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test")
+            else os.getenv("MIGRATION_TEST_DB_URL", "postgresql://scheme_saathi_test_user:test_secure_password@localhost:5432/scheme_saathi_migration_test")
         )
         app = args.app_url or os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/scheme_saathi")
 
-        print(f"Provisioning disposable sentinel for {args.purpose} on: {target}")
+        print(f"Provisioning disposable sentinel for {args.purpose} on: {mask_url_password(target)}")
         provision_test_database_sentinel(target, app, purpose=args.purpose, enforce_opt_in=True, grant_role=args.grant_role)
         print("Sentinel provisioned successfully.")
     elif args.command == "setup-roles":
-        print(f"Setting up restricted test role '{args.test_role}' on: {args.admin_url}")
-        setup_test_roles(args.admin_url, test_role=args.test_role)
+        admin = args.admin_url or os.getenv("ADMIN_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
+        pwd = args.test_password or os.getenv("TEST_DB_PASSWORD")
+        if not pwd:
+            print("Error: Password must be provided via --test-password or TEST_DB_PASSWORD env var.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Setting up restricted test role '{args.test_role}' on: {mask_url_password(admin)}")
+        setup_test_roles(admin, test_role=args.test_role, test_password=pwd)
         print("Test role configured successfully.")
     else:
         parser.print_help()

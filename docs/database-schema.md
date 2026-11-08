@@ -24,9 +24,10 @@ To prevent any possibility of destructive testing operations (`drop_all`, `creat
 - **Dedicated Role-Isolated Databases (Fallback):** Runs against pre-provisioned disposable databases (`scheme_saathi_test` and `scheme_saathi_migration_test`) using a dedicated, permission-restricted role (`scheme_saathi_test_user`).
 
 ### 2. Privilege-Restricted Test Runtime Role (`scheme_saathi_test_user`)
-- **No Connect on Application Database:** `REVOKE CONNECT ON DATABASE scheme_saathi FROM PUBLIC, scheme_saathi_test_user`.
-- **Read-Only Sentinel Access:** `GRANT SELECT ON _scheme_saathi_db_sentinel TO scheme_saathi_test_user; REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON _scheme_saathi_db_sentinel FROM scheme_saathi_test_user`.
+- **No Connect on Application Database:** Revokes permissions and connection explicitly from `scheme_saathi_test_user` on `scheme_saathi` (`REVOKE ALL ON DATABASE scheme_saathi FROM scheme_saathi_test_user; REVOKE CONNECT ON DATABASE scheme_saathi FROM scheme_saathi_test_user; ALTER ROLE scheme_saathi_test_user IN DATABASE scheme_saathi SET session_preload_libraries = 'nonexistent_lib';`). Crucially, `PUBLIC` privileges and all unrelated roles remain completely untouched.
+- **Read-Only Sentinel Access:** `GRANT SELECT ON _scheme_saathi_db_sentinel TO scheme_saathi_test_user; REVOKE ALL ON TABLE _scheme_saathi_db_sentinel FROM scheme_saathi_test_user; GRANT SELECT ON TABLE _scheme_saathi_db_sentinel TO scheme_saathi_test_user`.
 - **No Self-Authorization:** Test fixtures **never** auto-provision or alter the sentinel. Missing sentinel causes immediate failure.
+- **Rejection of Superusers/Administrators:** Fallback test fixtures strictly verify `current_user` against `scheme_saathi_test_user` and reject connections made by `postgres`, superusers, or administrator roles.
 
 ### 3. Multi-Layer Anti-Application DB Protection
 Regardless of environment variables, the system verifies that the target does not collide with `DATABASE_URL`:

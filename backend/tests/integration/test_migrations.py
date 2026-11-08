@@ -28,10 +28,14 @@ from app.core.db_safety import (
     MIGRATION_TEST_OPT_IN_VARS,
 )
 
-MIGRATION_TEST_DB_URL = os.getenv(
-    "MIGRATION_TEST_DB_URL",
-    "postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test",
-)
+TEST_DB_USER = os.getenv("TEST_DB_USER", "scheme_saathi_test_user")
+TEST_DB_PASSWORD = os.getenv("TEST_DB_PASSWORD", "test_secure_password")
+TEST_DB_HOST = os.getenv("TEST_DB_HOST", "localhost")
+TEST_DB_PORT = os.getenv("TEST_DB_PORT", "5432")
+MIGRATION_DB_NAME = os.getenv("MIGRATION_DB_NAME", "scheme_saathi_migration_test")
+
+DEFAULT_MIGRATION_URL = f"postgresql://{TEST_DB_USER}:{TEST_DB_PASSWORD}@{TEST_DB_HOST}:{TEST_DB_PORT}/{MIGRATION_DB_NAME}"
+MIGRATION_TEST_DB_URL = os.getenv("MIGRATION_TEST_DB_URL", DEFAULT_MIGRATION_URL)
 
 
 def validate_migration_test_target(test_url: str, app_url: str, enforce_opt_in: bool = True) -> None:

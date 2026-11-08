@@ -96,8 +96,8 @@ When running against a local PostgreSQL instance, the test runner enforces stric
 2. **One-Time Administrative Setup:**
    Run administrative provisioning using admin credentials (`postgres`):
    ```bash
-   # 1. Configure restricted test runtime role:
-   python -m app.core.db_safety setup-roles
+   # 1. Configure restricted test runtime role (requires TEST_DB_PASSWORD):
+   TEST_DB_PASSWORD="your_test_password" python -m app.core.db_safety setup-roles
 
    # 2. Provision regular test database sentinel:
    ALLOW_TEST_DB_RESET=1 python -m app.core.db_safety provision --purpose regular_test
@@ -115,7 +115,7 @@ When running against a local PostgreSQL instance, the test runner enforces stric
    Migration tests run against dynamically generated ephemeral schemas (`migtest_<uuid>`) inside `scheme_saathi_migration_test` and require independent authorization:
    ```bash
    ALLOW_MIGRATION_TESTS=1 \
-   MIGRATION_TEST_DB_URL=postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test \
+   MIGRATION_TEST_DB_URL=postgresql://scheme_saathi_test_user:your_test_password@localhost:5432/scheme_saathi_migration_test \
    pytest tests/integration/test_migrations.py -v
    ```
 
