@@ -5,7 +5,7 @@ Provides multi-layer validation ensuring destructive database operations (migrat
 fixture setup/teardown, table creation/dropping) NEVER run against the application database.
 
 Safety Checks:
-1. Explicit Opt-In Enforcement (ALLOW_TEST_DB_RESET, ALLOW_MIGRATION_TESTS, etc.)
+1. Explicit Opt-In Enforcement (ALLOW_TEST_DB_RESET vs ALLOW_MIGRATION_TESTS)
 2. Driver Scheme Normalization (postgresql://, postgresql+psycopg://, postgresql+psycopg2://, etc.)
 3. Hostname Alias Normalization & Network IP Resolution (localhost, 127.0.0.1, ::1, 0.0.0.0)
 4. Port & Database Name Equivalence Detection
@@ -21,10 +21,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url, URL
 
 
-DEFAULT_OPT_IN_VARS = (
+REGULAR_TEST_OPT_IN_VARS = (
     "ALLOW_TEST_DB_RESET",
     "ALLOW_DESTRUCTIVE_TESTS",
     "ALLOW_TEST_DB_WIPE",
+)
+
+MIGRATION_TEST_OPT_IN_VARS = (
     "ALLOW_MIGRATION_TESTS",
     "ALLOW_DESTRUCTIVE_MIGRATION_TESTS",
 )
@@ -141,8 +144,8 @@ def inspect_database_identity(db_url: str, timeout_seconds: float = 3.0) -> Data
     return identity
 
 
-def is_opted_in(opt_in_env_vars: Sequence[str] = DEFAULT_OPT_IN_VARS) -> bool:
-    """Check if destructive testing has been explicitly authorized via environment variables."""
+def is_opted_in(opt_in_env_vars: Sequence[str] = REGULAR_TEST_OPT_IN_VARS) -> bool:
+    """Check if destructive testing has been explicitly authorized via specified environment variables."""
     for var in opt_in_env_vars:
         val = os.getenv(var, "").strip().lower()
         if val in ("1", "true", "yes", "on"):
@@ -155,21 +158,24 @@ def validate_database_target(
     app_url: str,
     target_label: str = "test database",
     enforce_opt_in: bool = True,
-    opt_in_env_vars: Sequence[str] = DEFAULT_OPT_IN_VARS,
+    opt_in_env_vars: Sequence[str] = REGULAR_TEST_OPT_IN_VARS,
 ) -> None:
     """
     Robust database target safety guard:
-    1. Enforces explicit opt-in via environment variables.
+    1. Enforces explicit opt-in via environment variables (never automatically enabled).
     2. Detects equivalent URLs across driver schemes and host aliases.
     3. Resolves network IPs to compare real destinations.
     4. Connects to test and app databases to compare physical cluster identity (system_identifier) and DB OID.
     5. Fails closed when targets remain ambiguous due to connectivity or permission limitations.
     """
-    # 1. Opt-in check
+    # 1. Opt-in check (explicit requirement)
     if enforce_opt_in and not is_opted_in(opt_in_env_vars):
+        opt_names = list(opt_in_env_vars)
+        example_var = opt_names[0] if opt_names else "ALLOW_TEST_DB_RESET"
         raise PermissionError(
             f"Destructive operation on {target_label} rejected: explicit opt-in required. "
-            f"Set one of {list(opt_in_env_vars)} to '1' before running."
+            f"Set one of {opt_names} to '1' before running. "
+            f"Example: {example_var}=1 pytest tests/ -v"
         )
 
     # 2. URL parsing & scheme normalization

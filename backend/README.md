@@ -64,19 +64,25 @@ Once running, visit:
 
 ## Running tests
 
-The test suite runs against an isolated PostgreSQL test database (`scheme_saathi_test`):
+The test suite runs against an isolated PostgreSQL test database (`scheme_saathi_test`).
+
+### Regular Test Suite
+
+Destructive test database setup and teardown (`drop_all` / `create_all`) requires explicit authorization:
 ```bash
-pytest tests/ -v
+ALLOW_TEST_DB_RESET=1 pytest tests/ -v
 ```
+> **Safety Notice:** Running tests with `ALLOW_TEST_DB_RESET=1` can drop and recreate all tables in the configured disposable test database (`TEST_DATABASE_URL`). The safety guard verifies the target's physical identity and will strictly reject the configured application database (`DATABASE_URL`). Running without this variable will fail with a `PermissionError`.
 
 ### Migration Tests (Schema Isolated)
 
-Migration tests run against an ephemeral test schema inside `scheme_saathi_migration_test` and require explicit opt-in:
+Migration tests run against an ephemeral test schema inside `scheme_saathi_migration_test` and require a separate, independent opt-in (`ALLOW_MIGRATION_TESTS=1`):
 ```bash
 ALLOW_MIGRATION_TESTS=1 \
 MIGRATION_TEST_DB_URL=postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test \
 pytest tests/integration/test_migrations.py -v
 ```
+> **Authorization Isolation:** `ALLOW_TEST_DB_RESET` and `ALLOW_MIGRATION_TESTS` are strictly independent. Authorizing regular test database resets does not authorize migration tests, and authorizing migration tests does not authorize regular test resets.
 
 ## Authentication & Profile Endpoints
 

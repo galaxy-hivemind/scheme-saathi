@@ -3,6 +3,10 @@ Integration tests for PostgreSQL database target safety guards (app.core.db_safe
 Validates driver scheme detection, hostname/IP alias resolution, cluster/database identity checks,
 permission error handling, opt-in enforcement, and partial setup failure handling.
 """
+from pathlib import Path
+import os
+import subprocess
+import sys
 import uuid
 import pytest
 from sqlalchemy import create_engine, text
@@ -15,33 +19,121 @@ from app.core.db_safety import (
     normalize_db_url,
     resolve_host_ips,
     DatabaseIdentity,
+    REGULAR_TEST_OPT_IN_VARS,
+    MIGRATION_TEST_OPT_IN_VARS,
 )
+from tests.conftest import TEST_DATABASE_URL
 from tests.integration.test_migrations import (
     managed_control_schema,
     MIGRATION_TEST_DB_URL,
 )
 
 
-# ── Opt-In Enforcement Tests ──────────────────────────────────────────────────
+# ── Explicit Opt-In Enforcement Tests ─────────────────────────────────────────
 
-def test_safety_guard_rejects_missing_destructive_test_opt_in(monkeypatch):
+def test_running_without_opt_in_fails(monkeypatch):
     """Verify that destructive operations on test databases are rejected when opt-in is absent."""
-    for var in [
-        "ALLOW_TEST_DB_RESET",
-        "ALLOW_DESTRUCTIVE_TESTS",
-        "ALLOW_TEST_DB_WIPE",
-        "ALLOW_MIGRATION_TESTS",
-        "ALLOW_DESTRUCTIVE_MIGRATION_TESTS",
-    ]:
+    for var in REGULAR_TEST_OPT_IN_VARS:
         monkeypatch.delenv(var, raising=False)
+
+    with pytest.raises(PermissionError, match="explicit opt-in required"):
+        validate_database_target(
+            target_url=TEST_DATABASE_URL,
+            app_url=settings.DATABASE_URL,
+            target_label="regular test database",
+            enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
+        )
+
+
+def test_setting_explicit_opt_in_allows_valid_disposable_test_db(monkeypatch):
+    """Verify that explicitly setting ALLOW_TEST_DB_RESET=1 permits execution on a valid disposable test database."""
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    validate_database_target(
+        target_url=TEST_DATABASE_URL,
+        app_url=settings.DATABASE_URL,
+        target_label="regular test database",
+        enforce_opt_in=True,
+        opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
+    )
+
+
+def test_opt_in_not_automatically_inserted_into_environ():
+    """
+    Verify that importing conftest or db_safety does NOT automatically set or inject
+    opt-in variables into os.environ.
+    """
+    backend_dir = Path(__file__).resolve().parent.parent.parent
+    clean_env = {k: v for k, v in os.environ.items() if not k.startswith("ALLOW_")}
+    clean_env["PYTHONPATH"] = str(backend_dir)
+    cmd = [
+        sys.executable,
+        "-c",
+        (
+            "import os; "
+            "assert 'ALLOW_TEST_DB_RESET' not in os.environ, 'Already in environ'; "
+            "import tests.conftest; "
+            "assert 'ALLOW_TEST_DB_RESET' not in os.environ, 'conftest automatically set ALLOW_TEST_DB_RESET'; "
+            "assert 'ALLOW_DESTRUCTIVE_TESTS' not in os.environ, 'conftest set ALLOW_DESTRUCTIVE_TESTS'; "
+            "assert 'ALLOW_TEST_DB_WIPE' not in os.environ, 'conftest set ALLOW_TEST_DB_WIPE';"
+        ),
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True, cwd=backend_dir, env=clean_env)
+    assert res.returncode == 0, f"Opt-in was automatically inserted into environ: {res.stderr}"
+
+
+def test_migration_opt_in_alone_does_not_authorize_regular_test_db(monkeypatch):
+    """
+    Verify that setting migration-test opt-in (ALLOW_MIGRATION_TESTS) alone
+    does NOT authorize regular test database resets.
+    """
+    for var in REGULAR_TEST_OPT_IN_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    with pytest.raises(PermissionError, match="explicit opt-in required"):
+        validate_database_target(
+            target_url=TEST_DATABASE_URL,
+            app_url=settings.DATABASE_URL,
+            target_label="regular test database",
+            enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
+        )
+
+
+def test_regular_test_opt_in_alone_does_not_authorize_migration_tests(monkeypatch):
+    """
+    Verify that setting regular-test opt-in (ALLOW_TEST_DB_RESET) alone
+    does NOT authorize migration tests.
+    """
+    for var in MIGRATION_TEST_OPT_IN_VARS:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
 
     with pytest.raises(PermissionError, match="explicit opt-in required"):
         validate_database_target(
             target_url=MIGRATION_TEST_DB_URL,
             app_url=settings.DATABASE_URL,
+            target_label="migration test database",
+            enforce_opt_in=True,
+            opt_in_env_vars=MIGRATION_TEST_OPT_IN_VARS,
+        )
+
+
+def test_configured_app_database_is_still_rejected_with_all_opt_ins(monkeypatch):
+    """
+    Verify that even with all opt-in environment variables set, targeting the configured
+    application database is strictly rejected.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+    with pytest.raises(ValueError, match="matches the active application database|Target URL points to the active application database"):
+        validate_database_target(
+            target_url=settings.DATABASE_URL,
+            app_url=settings.DATABASE_URL,
             target_label="regular test database",
             enforce_opt_in=True,
-            opt_in_env_vars=["ALLOW_TEST_DB_RESET", "ALLOW_DESTRUCTIVE_TESTS"],
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
         )
 
 
@@ -53,6 +145,7 @@ def test_safety_guard_rejects_empty_target_url(monkeypatch):
             target_url="",
             app_url=settings.DATABASE_URL,
             enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
         )
 
 
@@ -87,6 +180,7 @@ def test_safety_guard_rejects_different_driver_schemes_for_app_db(monkeypatch, d
             app_url=settings.DATABASE_URL,
             target_label="test database",
             enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
         )
 
 
@@ -119,6 +213,7 @@ def test_safety_guard_rejects_hostname_ip_aliases(monkeypatch, host_alias):
             app_url=settings.DATABASE_URL,
             target_label="test database",
             enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
         )
 
 
@@ -141,6 +236,7 @@ def test_safety_guard_rejects_same_dbname_port_with_resolved_host_overlap(monkey
             app_url=settings.DATABASE_URL,
             target_label="test database",
             enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
         )
 
 
@@ -154,7 +250,6 @@ def test_safety_guard_identity_verification_handles_permission_limitations():
     ident = inspect_database_identity(MIGRATION_TEST_DB_URL)
     assert ident.is_connected is True
     assert ident.current_database == "scheme_saathi_migration_test"
-    # Even if pg_control_system is restricted, is_connected remains True and error is tracked
     assert ident.connection_error is None or "permission" in str(ident.connection_error).lower()
 
 
@@ -165,7 +260,6 @@ def test_safety_guard_fails_closed_when_app_db_unreachable_and_target_ambiguous(
     silently assuming the target is safe.
     """
     monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
-    # Target points to localhost with app db name
     app_parsed = normalize_db_url(settings.DATABASE_URL)
     app_db = app_parsed.database
 
@@ -179,6 +273,7 @@ def test_safety_guard_fails_closed_when_app_db_unreachable_and_target_ambiguous(
             app_url=offline_app_url,
             target_label="test database",
             enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
         )
 
 
@@ -193,6 +288,7 @@ def test_safety_guard_fails_closed_when_test_db_cannot_connect(monkeypatch):
             app_url=settings.DATABASE_URL,
             target_label="test database",
             enforce_opt_in=True,
+            opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
         )
 
 
@@ -205,10 +301,11 @@ def test_safety_guard_accepts_valid_isolated_test_database(monkeypatch):
     """
     monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
     validate_database_target(
-        target_url=MIGRATION_TEST_DB_URL,
+        target_url=TEST_DATABASE_URL,
         app_url=settings.DATABASE_URL,
         target_label="test database",
         enforce_opt_in=True,
+        opt_in_env_vars=REGULAR_TEST_OPT_IN_VARS,
     )
 
 
