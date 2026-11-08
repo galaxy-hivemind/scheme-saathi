@@ -19,29 +19,31 @@
 
 To prevent any possibility of destructive testing operations (`drop_all`, `create_all`, `drop schema`) impacting the production or application database, Scheme Saathi implements a **fail-closed verifiable trust model** (`backend/app/core/db_safety.py`):
 
-### 1. In-Database Disposable Sentinel
-Every disposable test database contains a dedicated sentinel table (`_scheme_saathi_db_sentinel`) initialized with:
-- `marker_key`: `'scheme_saathi_test_isolation'`
-- `purpose`: `'regular_test'` or `'migration_test'`
-- `is_disposable`: `TRUE`
-- `database_name`: Strictly verified against `current_database()`
+### 1. Dual Isolation Architecture
+- **Testcontainers PostgreSQL (Preferred):** Dynamically spins up an ephemeral PostgreSQL 16 container on a random port, configures isolated credentials, runs tests, and destroys the container at the end of the session.
+- **Dedicated Role-Isolated Databases (Fallback):** Runs against pre-provisioned disposable databases (`scheme_saathi_test` and `scheme_saathi_migration_test`) using a dedicated, permission-restricted role (`scheme_saathi_test_user`).
 
-If this record is missing, invalid, or marks `is_disposable = FALSE`, all destructive operations fail closed immediately.
+### 2. Privilege-Restricted Test Runtime Role (`scheme_saathi_test_user`)
+- **No Connect on Application Database:** `REVOKE CONNECT ON DATABASE scheme_saathi FROM PUBLIC, scheme_saathi_test_user`.
+- **Read-Only Sentinel Access:** `GRANT SELECT ON _scheme_saathi_db_sentinel TO scheme_saathi_test_user; REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON _scheme_saathi_db_sentinel FROM scheme_saathi_test_user`.
+- **No Self-Authorization:** Test fixtures **never** auto-provision or alter the sentinel. Missing sentinel causes immediate failure.
 
-### 2. Multi-Layer Anti-Application DB Protection
+### 3. Multi-Layer Anti-Application DB Protection
 Regardless of environment variables, the system verifies that the target does not collide with `DATABASE_URL`:
+- **Unconditional Name Rejection:** If target's live `current_database()` matches `DATABASE_URL`'s connected database name, the target is rejected across all hostnames, ports, driver schemes, and proxy endpoints.
+- **Fail-Closed on Unreachable App DB:** If `DATABASE_URL` cannot be reached during identity comparison, verification fails closed immediately.
 - Normalizes URL schemes (`postgresql`, `postgresql+psycopg`, `postgresql+psycopg2`, `postgresql+asyncpg`, `postgres`).
 - Resolves hostnames and IP addresses (`localhost`, `127.0.0.1`, `0.0.0.0`).
 - Matches ports and database names.
 - Compares live PostgreSQL catalog OIDs and cluster identifiers (`pg_database.oid`, `pg_control_system()`).
-- Rejects application database targets even if a sentinel was artificially placed in them.
 
-### 3. Independent Authorization Scopes
+### 4. Independent Authorization Scopes
 - `ALLOW_TEST_DB_RESET=1`: Authorizes regular test fixture setup/teardown on disposable test databases.
 - `ALLOW_MIGRATION_TESTS=1`: Authorizes schema-isolated migration tests.
 - Cross-role authorization is strictly rejected.
+- Unit tests run completely free of database fixtures and opt-in requirements (`pytest tests/unit/`).
 
-### 4. Centralized Destructive Execution Gateways
+### 5. Centralized Destructive Execution Gateways
 Destructive DDL calls cannot be called directly; they must route through verified gatekeeper functions:
 - `safe_drop_all(engine, metadata, target_url, app_url, purpose)`
 - `safe_create_all(engine, metadata, target_url, app_url, purpose)`

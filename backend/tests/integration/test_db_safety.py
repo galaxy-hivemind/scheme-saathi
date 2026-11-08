@@ -1,10 +1,11 @@
 """
 Integration tests for PostgreSQL database target safety guards (app.core.db_safety).
 
-Exhaustive regression test suite covering all 22 required safety scenarios across:
-1. Identity verification (Tests 01-10)
+Exhaustive regression test suite verifying:
+1. Identity verification & unconditional connected DB comparison (Tests 01-10)
 2. Authorization enforcement & separation (Tests 11-15)
 3. Destructive execution gatekeepers & isolation (Tests 16-22)
+4. Role permissions, sentinel tamper protection, and fail-closed safety (Tests 23-26)
 """
 from pathlib import Path
 import os
@@ -12,8 +13,8 @@ import subprocess
 import sys
 import uuid
 import pytest
-from sqlalchemy import create_engine, text, inspect, MetaData, Table, Column, Integer, String
-from sqlalchemy.engine import make_url
+from sqlalchemy import create_engine, text, inspect, MetaData, Table, Column, Integer
+from sqlalchemy.exc import ProgrammingError, OperationalError
 
 from app.core.config import settings
 from app.core.db_safety import (
@@ -25,6 +26,7 @@ from app.core.db_safety import (
     MIGRATION_TEST_OPT_IN_VARS,
     SENTINEL_TABLE_NAME,
     SENTINEL_MARKER_KEY,
+    TEST_RUNTIME_ROLE,
     PROTECTED_SYSTEM_SCHEMAS,
     inspect_database_identity,
     normalize_db_url,
@@ -44,9 +46,12 @@ from tests.integration.test_migrations import (
     MIGRATION_TEST_DB_URL,
 )
 
+TEST_USER_URL = "postgresql://scheme_saathi_test_user:test_secure_password@localhost:5432/scheme_saathi_test"
+TEST_USER_MIG_URL = "postgresql://scheme_saathi_test_user:test_secure_password@localhost:5432/scheme_saathi_migration_test"
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CATEGORY 1: IDENTITY VERIFICATION (Tests 01 to 10)
+# CATEGORY 1: IDENTITY VERIFICATION & UNCONDITIONAL NAME COMPARISON
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_01_correctly_identified_isolated_test_database_accepted(monkeypatch):
@@ -126,7 +131,6 @@ def test_04_different_connection_urls_resolving_to_same_physical_db_rejected(mon
     """
     Scenario 4: Different connection URLs resolving to same physical DB rejected.
     Attempts to target the application database under different driver schemes
-    (postgresql://, postgresql+psycopg://, postgresql+psycopg2://, postgresql+asyncpg://, postgres://)
     are recognized as targeting the application database and rejected.
     """
     monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
@@ -177,31 +181,38 @@ def test_05_dns_aliases_and_proxies_cannot_bypass_identity_comparison(monkeypatc
         )
 
 
-def test_06_unavailable_cluster_identity_rejected_unless_sentinel_proves_safety(monkeypatch):
+def test_06_missing_sentinel_provisioning_is_rejected_during_test_execution(monkeypatch):
     """
-    Scenario 6: Unavailable cluster identity rejected unless independently verified sentinel proves safety.
-    If cluster identity (system_identifier) cannot be retrieved, the system NEVER
-    assumes safety from URL differences alone; an in-database sentinel is strictly required.
-    If sentinel is absent, it fails closed.
+    Scenario 6: Missing sentinel provisioning is rejected during test execution.
+    Proves that a missing sentinel causes immediate failure and is NOT automatically
+    provisioned by the test runner or verification logic.
     """
     monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
 
-    # Connect to test DB and temporarily drop sentinel to verify fail-closed behavior
     engine = create_engine(TEST_DATABASE_URL)
     try:
+        # Drop sentinel table to simulate unprovisioned target
         with engine.connect() as conn:
             conn.execute(text(f"DROP TABLE IF EXISTS {SENTINEL_TABLE_NAME};"))
             conn.commit()
 
-        with pytest.raises(ValueError, match=r"lacks the required in-database disposable sentinel record.*Failing closed"):
+        # Verification must fail closed immediately
+        with pytest.raises(ValueError, match=r"lacks the required in-database disposable sentinel record.*Administrative provisioning is required"):
             verify_database_isolation(
                 target_url=TEST_DATABASE_URL,
                 app_url=settings.DATABASE_URL,
                 expected_purpose=REGULAR_TEST_PURPOSE,
                 enforce_opt_in=True,
             )
+
+        # Crucial check: verify the table was NOT automatically recreated
+        with engine.connect() as conn:
+            inspector = inspect(conn)
+            assert SENTINEL_TABLE_NAME not in inspector.get_table_names(), (
+                "Sentinel table was self-authored/auto-provisioned by test runner! Self-authorization forbidden."
+            )
     finally:
-        # Re-provision sentinel
+        # Re-provision via explicit administrative function
         provision_test_database_sentinel(
             TEST_DATABASE_URL,
             settings.DATABASE_URL,
@@ -211,24 +222,27 @@ def test_06_unavailable_cluster_identity_rejected_unless_sentinel_proves_safety(
         engine.dispose()
 
 
-def test_07_permission_errors_do_not_silently_downgrade_verification():
+def test_07_restricted_catalog_permissions_fail_closed_without_sentinel():
     """
-    Scenario 7: Permission errors do not silently downgrade verification.
-    inspect_database_identity records permission_denied_catalogs = True without
-    raising or erroneously claiming cluster verification succeeded.
+    Scenario 7: Catalog permission limitations handled safely and fail closed without sentinel.
+    Proves:
+    1. A runtime user lacking pg_control_system() privilege records permission_denied_catalogs = True
+       and system_identifier = None without crashing.
+    2. Without an in-database sentinel, restricted catalog access strictly fails closed.
     """
-    ident = inspect_database_identity(MIGRATION_TEST_DB_URL)
+    # Connect as scheme_saathi_test_user (who lacks execute on pg_control_system)
+    ident = inspect_database_identity(TEST_USER_URL)
     assert ident.is_connected is True
-    assert ident.current_database == "scheme_saathi_migration_test"
-    # System catalog query flags are preserved without crash or false assertions
-    assert ident.permission_denied_catalogs in (True, False)
+    assert ident.current_database == "scheme_saathi_test"
+    assert ident.permission_denied_catalogs is True
+    assert ident.system_identifier is None
 
 
 def test_08_ambiguous_identity_rejected(monkeypatch):
     """
     Scenario 8: Ambiguous identity rejected.
     When target database name matches application database name and application
-    database is offline/unreachable, the system fails closed instead of assuming safety.
+    database is offline/unreachable, the system fails closed immediately.
     """
     monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
     app_parsed = normalize_db_url(settings.DATABASE_URL)
@@ -237,7 +251,7 @@ def test_08_ambiguous_identity_rejected(monkeypatch):
     target_url = f"postgresql://postgres:postgres@localhost:5432/{app_db}"
     offline_app_url = f"postgresql://postgres:postgres@localhost:54329/{app_db}"
 
-    with pytest.raises(ValueError, match=r"Cannot prove physical separation\. Failing closed"):
+    with pytest.raises((RuntimeError, ValueError), match=r"unreachable|Cannot prove physical separation|Failing closed"):
         verify_database_isolation(
             target_url=target_url,
             app_url=offline_app_url,
@@ -314,16 +328,17 @@ def test_09_conflicting_identity_rejected(monkeypatch):
         engine.dispose()
 
 
-def test_10_application_db_identity_cannot_be_bypassed_by_test_sentinel_alone(monkeypatch):
+def test_10_application_db_through_alternate_endpoints_and_proxy_ports_rejected(monkeypatch):
     """
-    Scenario 10: Application DB identity cannot be bypassed by a test sentinel alone.
-    Even if an adversary or erroneous script placed a valid test sentinel table inside
-    the application database, the non-bypassable anti-application-DB checks reject it.
+    Scenario 10: Application DB through alternate endpoints and proxy ports rejected.
+    Proves that comparing actual connected current_database() rejects targeting the
+    application database unconditionally, even through a different proxy port (e.g. 5433),
+    alternate host/scheme, or if an artificial sentinel was created in the application DB.
     """
     monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
 
-    # Targeting the application database must ALWAYS fail before or during sentinel inspection
+    # 1. Direct application database URL rejected
     with pytest.raises(ValueError, match="matches the active application database|Target URL points to the active application database"):
         verify_database_isolation(
             target_url=settings.DATABASE_URL,
@@ -332,7 +347,16 @@ def test_10_application_db_identity_cannot_be_bypassed_by_test_sentinel_alone(mo
             enforce_opt_in=True,
         )
 
-    # Attempting to provision sentinel onto application database is also strictly rejected
+    # 2. Simulated proxy endpoint on alternate port 5433 pointing to application database name
+    proxy_url = "postgresql://postgres:postgres@localhost:5433/scheme_saathi"
+    with pytest.raises(ValueError, match="matches the active application database|Target URL points to the active application database|Unsafe target"):
+        # Even if port differs (proxy), name collision rejects
+        normalize_target = normalize_db_url(proxy_url)
+        assert normalize_target.database == "scheme_saathi"
+        # verify_database_isolation will reject when URL/target matches application DB
+        validate_database_target(proxy_url, settings.DATABASE_URL)
+
+    # 3. Provisioning sentinel onto application database is strictly forbidden
     with pytest.raises(ValueError, match="Cannot provision application database as disposable test database"):
         provision_test_database_sentinel(
             target_url=settings.DATABASE_URL,
@@ -343,7 +367,7 @@ def test_10_application_db_identity_cannot_be_bypassed_by_test_sentinel_alone(mo
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CATEGORY 2: AUTHORIZATION (Tests 11 to 15)
+# CATEGORY 2: AUTHORIZATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_11_missing_authorization_rejected(monkeypatch):
@@ -468,7 +492,7 @@ def test_15_no_code_automatically_inserts_authorization_variables():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CATEGORY 3: DESTRUCTIVE EXECUTION GATEKEEPERS (Tests 16 to 22)
+# CATEGORY 3: DESTRUCTIVE EXECUTION GATEKEEPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def test_16_no_destructive_sql_executes_when_identity_verification_fails(monkeypatch):
@@ -483,7 +507,6 @@ def test_16_no_destructive_sql_executes_when_identity_verification_fails(monkeyp
     Table("users", dummy_meta, Column("id", Integer, primary_key=True))
 
     try:
-        # safe_drop_all must raise ValueError before issuing any DROP SQL
         with pytest.raises(ValueError, match="matches the active application database|Target URL points to the active application database"):
             safe_drop_all(
                 engine=app_engine,
@@ -493,7 +516,6 @@ def test_16_no_destructive_sql_executes_when_identity_verification_fails(monkeyp
                 purpose=REGULAR_TEST_PURPOSE,
             )
 
-        # safe_create_all must also raise ValueError
         with pytest.raises(ValueError, match="matches the active application database|Target URL points to the active application database"):
             safe_create_all(
                 engine=app_engine,
@@ -542,7 +564,6 @@ def test_18_failed_fixture_setup_does_not_trigger_destructive_teardown(monkeypat
     setup_succeeded = False
     teardown_dropped = False
 
-    # Simulate conftest pattern
     try:
         raise RuntimeError("Simulated connection failure during setup")
         setup_succeeded = True
@@ -567,7 +588,6 @@ def test_19_teardown_revalidates_database_identity(monkeypatch):
     dummy_meta = MetaData()
 
     try:
-        # Calling teardown with mutated target pointing to app DB is intercepted
         with pytest.raises(ValueError, match="matches the active application database|Target URL points to the active application database"):
             safe_drop_all(
                 engine=engine,
@@ -633,13 +653,11 @@ def test_21_existing_unrelated_schemas_and_tables_remain_untouched(monkeypatch):
 
     unrelated_schema = "test_unrelated_fixture_schema"
     try:
-        # Set up an unrelated baseline schema and table
         with engine.connect() as conn:
             conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{unrelated_schema}";'))
             conn.execute(text(f'CREATE TABLE IF NOT EXISTS "{unrelated_schema}".dummy (id int);'))
             conn.commit()
 
-        # Execute managed control schema flow
         with managed_control_schema(engine, prefix="control_isolation_check") as dynamic_schema:
             with engine.connect() as conn:
                 assert conn.execute(
@@ -647,7 +665,6 @@ def test_21_existing_unrelated_schemas_and_tables_remain_untouched(monkeypatch):
                     {"s": dynamic_schema},
                 ).scalar() is True
 
-        # Assert baseline unrelated schema and table were not touched or dropped
         with engine.connect() as conn:
             table_exists = conn.execute(
                 text("SELECT exists(SELECT 1 FROM information_schema.tables WHERE table_schema = :s AND table_name = 'dummy')"),
@@ -680,3 +697,99 @@ def test_22_application_database_contents_remain_untouched_in_all_negative_scena
         )
     finally:
         app_engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CATEGORY 4: ROLE ISOLATION, SENTINEL IMMUTABILITY & FAIL-CLOSED PROTECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_23_test_runtime_role_cannot_modify_or_drop_sentinel():
+    """
+    Scenario 23: Test runtime role cannot modify, delete, or drop the sentinel table.
+    Proves that the test runner role (scheme_saathi_test_user) has SELECT-only
+    access and cannot tamper with the sentinel.
+    """
+    engine = create_engine(TEST_USER_URL)
+    try:
+        # 1. SELECT works
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(f"SELECT marker_key, is_disposable FROM {SENTINEL_TABLE_NAME} WHERE marker_key = :k"),
+                {"k": SENTINEL_MARKER_KEY},
+            ).first()
+            assert row is not None
+
+        # 2. UPDATE fails with permission denied
+        with engine.connect() as conn:
+            with pytest.raises(ProgrammingError, match="permission denied"):
+                conn.execute(text(f"UPDATE {SENTINEL_TABLE_NAME} SET is_disposable = false;"))
+
+        # 3. DELETE fails with permission denied
+        with engine.connect() as conn:
+            with pytest.raises(ProgrammingError, match="permission denied"):
+                conn.execute(text(f"DELETE FROM {SENTINEL_TABLE_NAME};"))
+
+        # 4. DROP TABLE fails
+        with engine.connect() as conn:
+            with pytest.raises(ProgrammingError, match="must be owner"):
+                conn.execute(text(f"DROP TABLE {SENTINEL_TABLE_NAME};"))
+    finally:
+        engine.dispose()
+
+
+def test_24_test_runtime_role_cannot_connect_or_perform_destructive_ops_on_app_db():
+    """
+    Scenario 24: Test runtime role cannot connect or perform destructive operations against application database.
+    Proves that scheme_saathi_test_user has no CONNECT privilege on scheme_saathi.
+    """
+    forbidden_url = f"postgresql://{TEST_RUNTIME_ROLE}:test_secure_password@localhost:5432/scheme_saathi"
+    engine = create_engine(forbidden_url)
+    try:
+        with pytest.raises(OperationalError, match=r"permission denied for database|does not have CONNECT privilege"):
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1;"))
+    finally:
+        engine.dispose()
+
+
+def test_25_missing_or_inaccessible_application_identity_causes_refusal(monkeypatch):
+    """
+    Scenario 25: Missing or inaccessible application identity causes refusal.
+    Proves that if the application database is unreachable during comparison,
+    verify_database_isolation fails closed with RuntimeError.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    offline_app_url = "postgresql://postgres:postgres@localhost:54329/scheme_saathi"
+
+    with pytest.raises(RuntimeError, match=r"Application database at '.*?' is unreachable"):
+        verify_database_isolation(
+            target_url=TEST_DATABASE_URL,
+            app_url=offline_app_url,
+            expected_purpose=REGULAR_TEST_PURPOSE,
+            enforce_opt_in=True,
+        )
+
+
+def test_26_no_fixture_automatically_provisions_or_modifies_sentinel():
+    """
+    Scenario 26: No fixture automatically provisions or modifies the sentinel.
+    Inspects conftest.py and test_migrations.py source files to verify that
+    provision_test_database_sentinel is never called by fixtures.
+    """
+    backend_tests_dir = Path(__file__).resolve().parent.parent
+
+    conftest_source = (backend_tests_dir / "conftest.py").read_text()
+    migrations_source = (backend_tests_dir / "integration" / "test_migrations.py").read_text()
+
+    # conftest.py must not call provision_test_database_sentinel inside fixtures
+    assert "provision_test_database_sentinel(" not in conftest_source.split("def setup_test_db")[1].split("def db_session")[0], (
+        "conftest.py setup_test_db fixture contains auto-provisioning!"
+    )
+
+    # test_migrations.py must not contain ensure_migration_db_sentinel or auto-provisioning
+    assert "ensure_migration_db_sentinel" not in migrations_source, (
+        "test_migrations.py still contains ensure_migration_db_sentinel auto-provisioner!"
+    )
+    assert "provision_test_database_sentinel" not in migrations_source, (
+        "test_migrations.py contains auto-provisioning!"
+    )

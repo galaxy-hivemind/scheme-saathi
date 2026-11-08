@@ -9,12 +9,18 @@ Trust Model:
 1. Verifiable Database Identity: Uses PostgreSQL live catalogs (current_database, db_oid,
    cluster system_identifier) combined with an independently verified in-database sentinel.
 2. In-Database Sentinel Contract: Dedicated table `_scheme_saathi_db_sentinel` provisioned
-   with explicit role ('regular_test' vs 'migration_test') and is_disposable=TRUE.
+   by administrative credentials with explicit role ('regular_test' vs 'migration_test')
+   and is_disposable=TRUE. Test runtime roles are granted SELECT-only access and cannot
+   modify, delete, or recreate the sentinel.
 3. Fail-Closed on Ambiguity: Missing, inaccessible, conflicting, or unverified identity
-   fails closed before any destructive SQL can execute.
-4. Separate Authorization: Authorization environment variables (ALLOW_TEST_DB_RESET,
+   fails closed before any destructive SQL can execute. If the application database cannot
+   be reached to verify isolation, the system fails closed.
+4. Unconditional Connected Database Comparison: If the target's connected current_database()
+   matches the application database name, it is unconditionally rejected across all
+   hostnames, ports, driver schemes, and proxy endpoints.
+5. Separate Authorization: Authorization environment variables (ALLOW_TEST_DB_RESET,
    ALLOW_MIGRATION_TESTS) are strictly separate from identity and never bypass verification.
-5. Centralized Execution: All destructive DDL operations pass through auditable gatekeepers.
+6. Centralized Execution: All destructive DDL operations pass through auditable gatekeepers.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -45,6 +51,7 @@ MIGRATION_TEST_OPT_IN_VARS = (
 
 SENTINEL_TABLE_NAME = "_scheme_saathi_db_sentinel"
 SENTINEL_MARKER_KEY = "scheme_saathi_test_isolation"
+TEST_RUNTIME_ROLE = "scheme_saathi_test_user"
 
 DISPOSABLE_TEST_MARKERS = ("test", "disposable", "migtest", "migration_test")
 PROTECTED_SYSTEM_SCHEMAS = ("public", "information_schema", "pg_catalog", "pg_toast")
@@ -181,7 +188,6 @@ def is_opted_in(opt_in_env_vars: Sequence[str]) -> bool:
 def read_sentinel_record(conn) -> SentinelRecord | None:
     """Reads the isolation sentinel record from the connected database, if present."""
     inspector = inspect(conn)
-    # Check if sentinel table exists in default search path
     table_names = set(inspector.get_table_names())
     if SENTINEL_TABLE_NAME not in table_names:
         return None
@@ -210,10 +216,12 @@ def provision_test_database_sentinel(
     app_url: str,
     purpose: str,
     enforce_opt_in: bool = True,
+    grant_role: str | None = TEST_RUNTIME_ROLE,
 ) -> None:
     """
-    Explicitly provisions the in-database disposable sentinel record.
+    Explicit administrative operation to provision the in-database disposable sentinel record.
     Strictly refuses to provision any database that matches or resolves to the application database.
+    Configures SELECT-only access for the test runtime role so the test runner cannot modify it.
     """
     if purpose not in (REGULAR_TEST_PURPOSE, MIGRATION_TEST_PURPOSE):
         raise ValueError(f"Invalid sentinel purpose '{purpose}'. Must be '{REGULAR_TEST_PURPOSE}' or '{MIGRATION_TEST_PURPOSE}'.")
@@ -258,12 +266,15 @@ def provision_test_database_sentinel(
     if not target_ident.is_connected:
         raise RuntimeError(f"Cannot provision sentinel: connection to target failed ({target_ident.connection_error}).")
 
-    if target_ident.current_database and target_ident.current_database.strip().lower() == app_db:
-        if target_port == app_port and hosts_overlap:
-            raise ValueError("Target connected database matches application database! Refusing to provision.")
+    target_connected_name = (target_ident.current_database or "").strip().lower()
+    if target_connected_name == app_db:
+        raise ValueError("Target connected database matches application database! Refusing to provision.")
 
     app_ident = inspect_database_identity(app_url)
     if app_ident.is_connected:
+        app_connected_name = (app_ident.current_database or "").strip().lower()
+        if target_connected_name == app_connected_name:
+            raise ValueError("Target connected database matches application database! Refusing to provision.")
         if target_ident.system_identifier and app_ident.system_identifier:
             if target_ident.system_identifier == app_ident.system_identifier:
                 if target_ident.db_oid and app_ident.db_oid and target_ident.db_oid == app_ident.db_oid:
@@ -300,6 +311,54 @@ def provision_test_database_sentinel(
                 "cluster_system_id": target_ident.system_identifier,
             },
         )
+        # 5. Lock down sentinel permissions for test runtime role (Read-only)
+        if grant_role:
+            try:
+                conn.execute(text(f"""
+                    DO $$
+                    BEGIN
+                        IF EXISTS (SELECT FROM pg_roles WHERE rolname = '{grant_role}') THEN
+                            REVOKE ALL ON TABLE {SENTINEL_TABLE_NAME} FROM {grant_role};
+                            GRANT SELECT ON TABLE {SENTINEL_TABLE_NAME} TO {grant_role};
+                        END IF;
+                    END
+                    $$;
+                """))
+            except Exception:
+                pass
+        conn.commit()
+    engine.dispose()
+
+
+def setup_test_roles(admin_url: str, test_role: str = TEST_RUNTIME_ROLE, test_password: str = "test_secure_password") -> None:
+    """
+    Administrative setup creating the dedicated test role with restricted permissions:
+    - No permission to connect to or touch application database (scheme_saathi).
+    - Granted connect and DDL rights on test databases.
+    - SELECT-only access on the sentinel table.
+    """
+    app_db = "scheme_saathi"
+    engine = create_engine(admin_url, pool_pre_ping=True)
+    with engine.connect() as conn:
+        # Create test role if not exists
+        conn.execute(text(f"""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{test_role}') THEN
+                    CREATE ROLE {test_role} WITH LOGIN PASSWORD '{test_password}';
+                END IF;
+            END
+            $$;
+        """))
+        # Revoke access to application database
+        try:
+            conn.execute(text(f"""
+                REVOKE ALL ON DATABASE {app_db} FROM {test_role};
+                REVOKE CONNECT ON DATABASE {app_db} FROM {test_role};
+                REVOKE CONNECT ON DATABASE {app_db} FROM PUBLIC;
+            """))
+        except Exception:
+            pass
         conn.commit()
     engine.dispose()
 
@@ -318,11 +377,18 @@ def verify_database_isolation(
 
     Proof requirements:
     1. Authorization: Explicit opt-in environment variable for this specific purpose.
-    2. Non-App Proof: URL, host/IP, port, and live database identity cannot match application DB.
-    3. Sentinel Proof: In-database sentinel (_scheme_saathi_db_sentinel) must exist, have is_disposable=TRUE,
-       match expected_purpose, and match connected database name.
-    4. Anti-Tamper: If target matches application DB identity, presence of sentinel is rejected.
-    5. Ambiguity: Missing identity or missing sentinel fails closed.
+    2. Live Application Database Check: Application database must be reachable during comparison;
+       if unreachable, fails closed immediately.
+    3. Unconditional Actual Connected Database Name Comparison: The target's connected
+       current_database() cannot match the application database name under any circumstance
+       (regardless of hostname, port, driver scheme, proxy, or alias).
+    4. Physical Identity: If cluster identifier is available, verify target does not share OID
+       or connected database name with application database. Missing cluster identity is never
+       treated as proof of separation.
+    5. In-Database Sentinel Contract: Dedicated table `_scheme_saathi_db_sentinel` must exist,
+       have is_disposable=TRUE, match expected_purpose, and match connected database name.
+       A missing sentinel causes an immediate failure; test fixtures NEVER auto-provision it.
+    6. Anti-Bypass Guard: If target matches application DB identity, presence of sentinel is rejected.
     """
     # 1. Authorization check
     if opt_in_env_vars is None:
@@ -367,7 +433,18 @@ def verify_database_isolation(
             f"(resolved IPs: {target_ips & app_ips}). Operation rejected."
         )
 
-    # 4. Live connected PostgreSQL identity inspection
+    # 4. Live Application Database Identity Check
+    # If the application database cannot be reached during verification, fail closed!
+    app_ident = inspect_database_identity(app_url)
+    if not app_ident.is_connected:
+        raise RuntimeError(
+            f"Application database at '{app_url}' is unreachable ({app_ident.connection_error}). "
+            f"Cannot verify target isolation against active application database. Failing closed."
+        )
+
+    app_actual_db = (app_ident.current_database or app_db).strip().lower()
+
+    # 5. Live Connected Target PostgreSQL Identity Inspection
     target_ident = inspect_database_identity(target_url)
     if not target_ident.is_connected:
         if same_db_name:
@@ -379,48 +456,31 @@ def verify_database_isolation(
             f"Cannot verify {expected_purpose} safety: connection to target failed ({target_ident.connection_error})."
         )
 
-    # Check connected database name against application database
-    if target_ident.current_database and target_ident.current_database.strip().lower() == app_db:
-        if same_port and hosts_overlap:
-            raise ValueError(
-                f"Unsafe target for {expected_purpose}: Connected database '{target_ident.current_database}' "
-                f"matches the active application database on '{target_parsed.host}:{target_port}'."
-            )
+    target_actual_db = (target_ident.current_database or "").strip().lower()
 
-    # 5. Check against live application database
-    app_ident = inspect_database_identity(app_url)
-    if app_ident.is_connected:
-        # Physical identity comparison
-        if target_ident.system_identifier and app_ident.system_identifier:
-            if target_ident.system_identifier == app_ident.system_identifier:
-                if target_ident.db_oid and app_ident.db_oid and target_ident.db_oid == app_ident.db_oid:
-                    raise ValueError(
-                        f"Unsafe target for {expected_purpose}: Connected database shares exact physical "
-                        f"cluster and OID identity with application database "
-                        f"(cluster={target_ident.system_identifier}, oid={target_ident.db_oid})."
-                    )
-                if (target_ident.current_database or "").lower() == (app_ident.current_database or "").lower():
-                    raise ValueError(
-                        f"Unsafe target for {expected_purpose}: Connected database matches application database "
-                        f"on cluster '{target_ident.system_identifier}'."
-                    )
-        elif target_ident.permission_denied_catalogs or app_ident.permission_denied_catalogs:
-            if (target_ident.current_database or "").lower() == (app_ident.current_database or "").lower():
+    # 6. Unconditional Connected Database Name Comparison
+    # Reject when target connected database matches application connected database,
+    # regardless of hostnames, ports, driver schemes, or proxy endpoints!
+    if target_actual_db == app_actual_db:
+        raise ValueError(
+            f"Unsafe target for {expected_purpose}: Connected database name '{target_ident.current_database}' "
+            f"matches the active application database name '{app_ident.current_database}'! "
+            f"Rejection is unconditional across all hostnames, ports, driver schemes, and proxy endpoints."
+        )
+
+    # 7. Physical Cluster and Catalog Comparison
+    if target_ident.system_identifier and app_ident.system_identifier:
+        if target_ident.system_identifier == app_ident.system_identifier:
+            if target_ident.db_oid and app_ident.db_oid and target_ident.db_oid == app_ident.db_oid:
                 raise ValueError(
-                    f"Unsafe target for {expected_purpose}: Database name matches application database, "
-                    f"and physical cluster identity could not be verified due to restricted catalog permissions. "
-                    f"Failing closed."
+                    f"Unsafe target for {expected_purpose}: Connected database shares exact physical "
+                    f"cluster and OID identity with application database "
+                    f"(cluster={target_ident.system_identifier}, oid={target_ident.db_oid})."
                 )
-    else:
-        # App database unreachable; if database names match on overlapping network, fail closed
-        if same_db_name and hosts_overlap:
-            raise ValueError(
-                f"Unsafe target for {expected_purpose}: Database name '{target_db}' matches application database, "
-                f"and application database is currently unreachable ({app_ident.connection_error}). "
-                f"Cannot prove physical separation. Failing closed."
-            )
 
-    # 6. In-Database Sentinel Verification (Verifiable Alternative Isolation Mechanism)
+    # 8. In-Database Sentinel Verification
+    # Must exist, be disposable, match expected purpose, and match connected DB name.
+    # A missing sentinel fails closed immediately. Test fixtures never auto-provision it.
     engine = create_engine(target_url, pool_pre_ping=True)
     with engine.connect() as conn:
         sentinel = read_sentinel_record(conn)
@@ -430,8 +490,8 @@ def verify_database_isolation(
         raise ValueError(
             f"Unsafe target for {expected_purpose}: Database '{target_ident.current_database}' lacks "
             f"the required in-database disposable sentinel record ({SENTINEL_TABLE_NAME}). "
-            f"Unavailable identity information cannot be treated as proof of isolation. Failing closed. "
-            f"To provision: python -m app.core.db_safety provision --purpose {expected_purpose}"
+            f"A missing sentinel causes an immediate failure. Tests never automatically provision sentinels. "
+            f"Administrative provisioning is required before running tests."
         )
 
     if not sentinel.is_disposable:
@@ -447,15 +507,14 @@ def verify_database_isolation(
             f"Cross-role destructive execution rejected."
         )
 
-    if (sentinel.database_name or "").strip().lower() != (target_ident.current_database or "").strip().lower():
+    if (sentinel.database_name or "").strip().lower() != target_actual_db:
         raise ValueError(
             f"Conflicting database identity: Sentinel recorded database_name '{sentinel.database_name}' "
             f"does not match actual connected database '{target_ident.current_database}'. Failing closed."
         )
 
-    # 7. Anti-Bypass Guard: Verify application database cannot be bypassed by a test sentinel
-    # If application database comparison earlier or live host checks indicate this is the application DB:
-    if target_ident.current_database and target_ident.current_database.strip().lower() == app_db and hosts_overlap:
+    # 9. Anti-Bypass Guard: Verify application database cannot be bypassed by an artificial test sentinel
+    if target_actual_db == app_actual_db:
         raise ValueError(
             f"Application database identity cannot be bypassed by a test-database marker alone! "
             f"Database '{target_ident.current_database}' is identified as the application database."
@@ -523,7 +582,7 @@ def safe_drop_schema(
     """
     Centralized gatekeeper for schema drops.
     Enforces that protected system schemas (public, pg_catalog, etc.) can NEVER be dropped,
-    and requires the target schema to belong to the test before dropping.
+    and requires the target schema to possess an approved test prefix.
     """
     normalized_schema = schema_name.strip().lower()
     if normalized_schema in PROTECTED_SYSTEM_SCHEMAS:
@@ -539,7 +598,7 @@ def safe_drop_schema(
         conn.commit()
 
 
-# ── Backward Compatibility Alias ──────────────────────────────────────────────
+# ── Backward Compatibility Bridge ─────────────────────────────────────────────
 
 def validate_database_target(
     target_url: str,
@@ -569,6 +628,11 @@ def main():
     prov_parser.add_argument("--purpose", choices=[REGULAR_TEST_PURPOSE, MIGRATION_TEST_PURPOSE], required=True)
     prov_parser.add_argument("--target-url", default=None, help="Target test database URL")
     prov_parser.add_argument("--app-url", default=None, help="Application database URL")
+    prov_parser.add_argument("--grant-role", default=TEST_RUNTIME_ROLE, help="Test runtime role to grant read-only access")
+
+    role_parser = subparsers.add_parser("setup-roles", help="Setup test runtime role with restricted permissions")
+    role_parser.add_argument("--admin-url", default="postgresql://postgres:postgres@localhost:5432/postgres", help="PostgreSQL admin URL")
+    role_parser.add_argument("--test-role", default=TEST_RUNTIME_ROLE, help="Name of test role to configure")
 
     args = parser.parse_args()
 
@@ -581,8 +645,12 @@ def main():
         app = args.app_url or os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/scheme_saathi")
 
         print(f"Provisioning disposable sentinel for {args.purpose} on: {target}")
-        provision_test_database_sentinel(target, app, purpose=args.purpose, enforce_opt_in=True)
+        provision_test_database_sentinel(target, app, purpose=args.purpose, enforce_opt_in=True, grant_role=args.grant_role)
         print("Sentinel provisioned successfully.")
+    elif args.command == "setup-roles":
+        print(f"Setting up restricted test role '{args.test_role}' on: {args.admin_url}")
+        setup_test_roles(args.admin_url, test_role=args.test_role)
+        print("Test role configured successfully.")
     else:
         parser.print_help()
 

@@ -1,7 +1,14 @@
 """
 Pytest fixtures for Scheme Saathi test suite.
-Configures isolated test database sessions against the local PostgreSQL test instance.
-Enforces multi-layer safety validation, in-database sentinel verification, and explicit opt-in.
+Configures isolated test database sessions with support for both:
+1. Ephemeral Testcontainers PostgreSQL container (when USE_TESTCONTAINERS=1).
+2. Dedicated separately provisioned PostgreSQL test database with restricted role (default).
+
+Strictly enforces:
+- Unit tests run completely free of database fixtures and opt-in requirements.
+- Integration tests require explicit opt-in (ALLOW_TEST_DB_RESET=1).
+- Non-authorizing: NEVER auto-provisions sentinels inside test fixtures. Missing sentinel fails immediately.
+- Re-validates target safety immediately before teardown and refuses to drop if setup failed.
 """
 import os
 import pytest
@@ -23,28 +30,81 @@ from app.database.base import Base
 from app.database.dependencies import get_db
 import app.models  # noqa: F401
 
+USE_TESTCONTAINERS = os.getenv("USE_TESTCONTAINERS", "").strip().lower() in ("1", "true", "yes")
+
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql://postgres:postgres@localhost:5432/scheme_saathi_test",
 )
 
-test_engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
-TestingSessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=test_engine,
-    expire_on_commit=False,
-)
+_test_container = None
+_active_test_engine = None
+_active_session_factory = None
 
 
-@pytest.fixture(scope="session", autouse=True)
+def get_test_database_url() -> str:
+    """Return the active test database URL (from Testcontainers if active, else configured URL)."""
+    global _test_container
+    if USE_TESTCONTAINERS:
+        if _test_container is None:
+            os.environ["TESTCONTAINERS_RYUK_DISABLED"] = "true"
+            try:
+                from testcontainers.community.postgres import PostgresContainer
+            except ImportError:
+                from testcontainers.postgres import PostgresContainer
+            _test_container = PostgresContainer("postgres:16-alpine")
+            _test_container.start()
+            container_url = _test_container.get_connection_url()
+            # Normalize driver
+            if container_url.startswith("postgresql+psycopg2://"):
+                container_url = container_url.replace("postgresql+psycopg2://", "postgresql://")
+            # Provision sentinel inside disposable container
+            provision_test_database_sentinel(
+                target_url=container_url,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+                enforce_opt_in=False,
+            )
+            return container_url
+        return _test_container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
+    return TEST_DATABASE_URL
+
+
+def get_test_engine():
+    """Return the active SQLAlchemy engine for test execution."""
+    global _active_test_engine
+    if _active_test_engine is None:
+        url = get_test_database_url()
+        _active_test_engine = create_engine(url, pool_pre_ping=True)
+    return _active_test_engine
+
+
+def get_session_factory():
+    """Return the sessionmaker bound to the active test engine."""
+    global _active_session_factory
+    if _active_session_factory is None:
+        _active_session_factory = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=get_test_engine(),
+            expire_on_commit=False,
+        )
+    return _active_session_factory
+
+
+# Backward compatibility test_engine and TestingSessionLocal
+test_engine = get_test_engine()
+TestingSessionLocal = get_session_factory()
+
+
+@pytest.fixture(scope="session")
 def setup_test_db():
     """
     Session fixture that sets up and tears down the disposable test database.
-    Strictly requires explicit opt-in (ALLOW_TEST_DB_RESET=1, ALLOW_DESTRUCTIVE_TESTS=1,
-    or ALLOW_TEST_DB_WIPE=1) before running destructive drop_all and create_all.
-    Re-validates target safety immediately before teardown and refuses to drop
-    tables if setup failed.
+    Requires explicit opt-in (ALLOW_TEST_DB_RESET=1) before running destructive drop_all and create_all.
+    Re-validates target safety immediately before teardown and refuses to drop tables if setup failed.
+    Does NOT auto-provision sentinels: a missing sentinel causes immediate failure.
+    NOTE: Not autouse=True so unit tests can run without database authorization or fixtures.
     """
     # 1. Require explicit authorization before doing anything
     is_authorized = any(
@@ -58,45 +118,44 @@ def setup_test_db():
             f"Example: {REGULAR_TEST_OPT_IN_VARS[0]}=1 pytest tests/ -v"
         )
 
-    # 2. Ensure test database sentinel is provisioned if valid disposable database
-    try:
-        verify_database_isolation(
-            target_url=TEST_DATABASE_URL,
-            app_url=settings.DATABASE_URL,
-            expected_purpose=REGULAR_TEST_PURPOSE,
-            enforce_opt_in=True,
-        )
-    except ValueError as e:
-        if "lacks the required in-database disposable sentinel record" in str(e):
-            # Target is a confirmed non-application database needing sentinel initialization
-            provision_test_database_sentinel(
-                target_url=TEST_DATABASE_URL,
-                app_url=settings.DATABASE_URL,
-                purpose=REGULAR_TEST_PURPOSE,
-                enforce_opt_in=True,
-            )
-        else:
-            raise
+    active_url = get_test_database_url()
+    active_engine = get_test_engine()
+
+    # 2. Verify target database isolation (fails immediately if sentinel is missing or target unsafe)
+    verify_database_isolation(
+        target_url=active_url,
+        app_url=settings.DATABASE_URL,
+        expected_purpose=REGULAR_TEST_PURPOSE,
+        enforce_opt_in=True,
+    )
 
     # 3. Perform centralized safe setup
     setup_succeeded = False
     try:
-        safe_drop_all(test_engine, Base.metadata, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
-        safe_create_all(test_engine, Base.metadata, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+        safe_drop_all(active_engine, Base.metadata, active_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+        safe_create_all(active_engine, Base.metadata, active_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
         setup_succeeded = True
         yield
     finally:
         # 4. Only teardown if setup actually succeeded (do not drop if setup failed)
         if setup_succeeded:
-            safe_drop_all(test_engine, Base.metadata, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+            safe_drop_all(active_engine, Base.metadata, active_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+
+        # Stop Testcontainers container if one was started
+        global _test_container
+        if _test_container is not None:
+            _test_container.stop()
+            _test_container = None
 
 
 @pytest.fixture
-def db_session():
+def db_session(setup_test_db):
     """Provides a clean database session per test with rollback/cleanup."""
-    connection = test_engine.connect()
+    engine = get_test_engine()
+    factory = get_session_factory()
+    connection = engine.connect()
     transaction = connection.begin()
-    session = TestingSessionLocal(bind=connection)
+    session = factory(bind=connection)
 
     yield session
 

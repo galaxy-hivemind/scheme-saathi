@@ -24,7 +24,6 @@ from app.core.db_safety import (
     normalize_db_url,
     safe_create_schema,
     safe_drop_schema,
-    provision_test_database_sentinel,
     MIGRATION_TEST_PURPOSE,
     MIGRATION_TEST_OPT_IN_VARS,
 )
@@ -33,27 +32,6 @@ MIGRATION_TEST_DB_URL = os.getenv(
     "MIGRATION_TEST_DB_URL",
     "postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test",
 )
-
-
-def ensure_migration_db_sentinel():
-    """Ensure the migration test database has a verified sentinel record."""
-    try:
-        verify_database_isolation(
-            target_url=MIGRATION_TEST_DB_URL,
-            app_url=settings.DATABASE_URL,
-            expected_purpose=MIGRATION_TEST_PURPOSE,
-            enforce_opt_in=True,
-        )
-    except ValueError as e:
-        if "lacks the required in-database disposable sentinel record" in str(e):
-            provision_test_database_sentinel(
-                target_url=MIGRATION_TEST_DB_URL,
-                app_url=settings.DATABASE_URL,
-                purpose=MIGRATION_TEST_PURPOSE,
-                enforce_opt_in=True,
-            )
-        else:
-            raise
 
 
 def validate_migration_test_target(test_url: str, app_url: str, enforce_opt_in: bool = True) -> None:
@@ -74,7 +52,6 @@ def isolated_test_schema(engine, prefix: str = "migtest"):
     Uses safe_create_schema and safe_drop_schema to guarantee isolation.
     Never drops or modifies the public schema.
     """
-    ensure_migration_db_sentinel()
     schema_name = f"{prefix}_{uuid.uuid4().hex[:12]}"
     safe_create_schema(engine, schema_name, MIGRATION_TEST_DB_URL, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
 
@@ -97,7 +74,6 @@ def managed_control_schema(engine, prefix: str = "control"):
     Context manager that safely manages an isolated control schema.
     Uses centralized safe schema gateways and guarantees cleanup on partial setup failure.
     """
-    ensure_migration_db_sentinel()
     schema_name = f"{prefix}_{uuid.uuid4().hex[:12]}"
     created = False
     try:
@@ -208,7 +184,6 @@ def test_safety_guard_rejects_hostname_and_driver_aliases(monkeypatch):
 def test_safety_guard_accepts_valid_isolated_target(monkeypatch):
     """Verify that a distinct target database with opt-in enabled and provisioned sentinel passes validation."""
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    ensure_migration_db_sentinel()
     validate_migration_test_target(
         test_url=MIGRATION_TEST_DB_URL,
         app_url=settings.DATABASE_URL,
@@ -219,7 +194,6 @@ def test_safety_guard_accepts_valid_isolated_target(monkeypatch):
 def test_teardown_preserves_original_test_failure(monkeypatch):
     """Verify that teardown cleans up the schema without masking an in-flight test assertion error."""
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    ensure_migration_db_sentinel()
     validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
     engine = create_engine(MIGRATION_TEST_DB_URL)
 
@@ -258,7 +232,6 @@ def test_unrelated_schemas_and_public_remain_untouched(monkeypatch):
     4. Ensures control-schema creation, sentinel records, and testing run in an exception-safe structure.
     """
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    ensure_migration_db_sentinel()
     validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
     engine = create_engine(MIGRATION_TEST_DB_URL)
 
@@ -315,7 +288,6 @@ def test_alembic_fresh_database_upgrade_head_and_foreign_keys(monkeypatch):
     7. Clean teardown dropping only the ephemeral test schema.
     """
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    ensure_migration_db_sentinel()
     validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
     engine = create_engine(MIGRATION_TEST_DB_URL)
 
@@ -357,7 +329,6 @@ def test_alembic_upgrade_from_previous_revision_and_downgrade(monkeypatch):
     5. Clean teardown dropping only the ephemeral test schema.
     """
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
-    ensure_migration_db_sentinel()
     validate_migration_test_target(MIGRATION_TEST_DB_URL, settings.DATABASE_URL)
     engine = create_engine(MIGRATION_TEST_DB_URL)
 
