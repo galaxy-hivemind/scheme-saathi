@@ -143,8 +143,10 @@ The Scheme Saathi test runner employs a strict **fail-closed trust model** (`app
    Authorization environment variables are independent and non-interchangeable:
    - `ALLOW_TEST_DB_RESET=1` authorizes regular test database resets.
    - `ALLOW_MIGRATION_TESTS=1` authorizes migration test schema creation/deletion.
-5. **Centralized Execution Gateways:**
-   All destructive DDL calls route through verified functions (`safe_drop_all`, `safe_create_all`, `safe_create_schema`, `safe_drop_schema`). Protected system schemas (`public`, `pg_catalog`, `information_schema`) can never be dropped.
+5. **Centralized Execution Gateways & Bound DDL Connections:**
+   All destructive DDL calls route through verified functions (`safe_drop_all`, `safe_create_all`, `safe_create_schema`, `safe_drop_schema`). The safety gate directly inspects the live SQLAlchemy connection (`verify_connection_isolation`) immediately prior to DDL and binds execution to that exact verified connection (`bind=conn`). Mismatched engines (e.g. administrative engines or engines targeting a different database) are rejected before DDL execution, leaving tables and schemas unchanged. Protected system schemas (`public`, `pg_catalog`, `information_schema`) can never be dropped.
+6. **Zero Role Memberships & Non-Administrative Attributes:**
+   The dedicated runtime role (`scheme_saathi_test_user`) is provisioned with zero role memberships (`pg_auth_members`), `rolinherit = FALSE`, and explicit non-administrative attributes (`LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`). Elevated memberships are revoked and verified.
 
 ### Verification Failure Troubleshooting
 
@@ -153,6 +155,8 @@ The Scheme Saathi test runner employs a strict **fail-closed trust model** (`app
 | `PermissionError: Destructive operation on regular test database rejected: explicit opt-in required` | Opt-in variable was not provided | Prepend `ALLOW_TEST_DB_RESET=1` to your test command. |
 | `PermissionError: Destructive operation for migration_test rejected: explicit opt-in required` | Migration opt-in missing | Prepend `ALLOW_MIGRATION_TESTS=1` to your test command. |
 | `ValueError: Unsafe target: Database '...' lacks the required in-database disposable sentinel record` | Test database was not provisioned with sentinel | Run administrative provisioning: `ALLOW_TEST_DB_RESET=1 python -m app.core.db_safety provision --purpose regular_test`. |
+| `PermissionError: Connection mismatch: actual connection is using administrative/superuser role '...'` | An administrative engine was passed to a test DDL gateway | Ensure test fixtures and runners execute DDL using the configured restricted test runtime role (`scheme_saathi_test_user`). |
+| `ValueError: Connection mismatch: actual connection is to database '...', but target URL specifies '...'` | Supplied engine connects to a different database than target | Align the execution engine with the verified target database URL. |
 | `ValueError: Conflicting database identity: Target database has sentinel purpose 'migration_test', but current execution requires 'regular_test'` | Attempting to run regular tests on migration DB (or vice versa) | Ensure `TEST_DATABASE_URL` and `MIGRATION_TEST_DB_URL` point to their respective databases. |
 | `ValueError: Unsafe target: Target URL points to the active application database` | Database target points to or resolves to `DATABASE_URL` | Set `TEST_DATABASE_URL` to a distinct disposable database (e.g. `scheme_saathi_test`) or use `USE_TESTCONTAINERS=1`. |
 

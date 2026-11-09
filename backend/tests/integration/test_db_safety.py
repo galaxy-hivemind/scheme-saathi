@@ -64,6 +64,7 @@ from app.core.db_safety import (
     setup_test_roles,
     validate_pg_identifier,
     verify_database_isolation,
+    verify_connection_isolation,
     validate_database_target,
     safe_drop_all,
     safe_create_all,
@@ -270,40 +271,61 @@ def test_08_migration_test_connection_using_expected_restricted_role_accepted(mo
 
 def test_09_createdb_createrole_and_unsafe_memberships_rejected_or_removed():
     """
-    Requirement 9: CREATEDB, CREATEROLE, and unsafe role memberships are rejected or removed.
-    setup_test_roles explicitly establishes NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT,
-    strips elevated memberships, and validates final catalog attributes.
+    Requirement 9 & Section 3: CREATEDB, CREATEROLE, rolinherit, and all role memberships
+    are revoked or rejected. setup_test_roles explicitly establishes LOGIN NOSUPERUSER
+    NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS, strips all memberships,
+    and enforces zero memberships for the dedicated test runtime role.
     """
     admin_url = get_admin_url()
     admin_engine = create_engine(admin_url)
     temp_role = f"test_role_elev_{uuid.uuid4().hex[:6]}"
+    temp_group = f"test_grp_{uuid.uuid4().hex[:6]}"
     test_pwd = os.getenv("TEST_DB_PASSWORD")
     if not test_pwd:
         pytest.skip("TEST_DB_PASSWORD required for setup_test_roles verification")
 
     try:
-        # Create role with elevated privileges intentionally
+        # Create group role and elevated role with membership intentionally
         with admin_engine.connect() as conn:
-            conn.execute(text(f'CREATE ROLE "{temp_role}" WITH LOGIN CREATEDB CREATEROLE PASSWORD \'{test_pwd}\';'))
+            conn.execute(text(f'CREATE ROLE "{temp_group}";'))
+            conn.execute(text(f'CREATE ROLE "{temp_role}" WITH LOGIN CREATEDB CREATEROLE INHERIT REPLICATION BYPASSRLS PASSWORD \'{test_pwd}\';'))
+            conn.execute(text(f'GRANT "{temp_group}" TO "{temp_role}";'))
             conn.commit()
 
         # Run setup_test_roles on this role
         setup_test_roles(admin_url, test_role=temp_role, test_password=test_pwd)
 
-        # Verify that elevated privileges were completely stripped
+        # Verify that elevated privileges were completely stripped and zero memberships remain
         with admin_engine.connect() as conn:
             attrs = conn.execute(
-                text("SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = :r;"),
+                text("SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, rolreplication, rolbypassrls, rolinherit FROM pg_roles WHERE rolname = :r;"),
                 {"r": temp_role},
             ).mappings().first()
             assert attrs["rolsuper"] is False
             assert attrs["rolcreaterole"] is False
             assert attrs["rolcreatedb"] is False
+            assert attrs["rolcanlogin"] is True
+            assert attrs["rolreplication"] is False
+            assert attrs["rolbypassrls"] is False
+            assert attrs["rolinherit"] is False
+
+            memberships = conn.execute(
+                text("""
+                    SELECT r.rolname
+                    FROM pg_auth_members m
+                    JOIN pg_roles r ON r.oid = m.roleid
+                    JOIN pg_roles u ON u.oid = m.member
+                    WHERE u.rolname = :r;
+                """),
+                {"r": temp_role},
+            ).fetchall()
+            assert len(memberships) == 0, f"Expected 0 memberships, found: {memberships}"
     finally:
         with admin_engine.connect() as conn:
             conn.execute(text(f'REVOKE ALL ON DATABASE "scheme_saathi_test" FROM "{temp_role}";'))
             conn.execute(text(f'REVOKE ALL ON DATABASE "scheme_saathi_migration_test" FROM "{temp_role}";'))
             conn.execute(text(f'DROP ROLE IF EXISTS "{temp_role}";'))
+            conn.execute(text(f'DROP ROLE IF EXISTS "{temp_group}";'))
             conn.commit()
         admin_engine.dispose()
 
@@ -909,3 +931,428 @@ def test_28_runtime_role_cannot_modify_or_drop_sentinel():
                 conn.execute(text(f"DROP TABLE {SENTINEL_TABLE_NAME};"))
     finally:
         engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ACTUAL DDL CONNECTION & MISMATCH REGRESSION TESTS (Tests 29-38)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_29_safe_target_url_combined_with_admin_engine_rejected(monkeypatch):
+    """
+    Section 2 Requirement 1: A safe target_url combined with an administrative engine is rejected.
+    Even though target_url specifies the safe disposable test DB with restricted role,
+    supplying an engine connected as postgres/superuser fails before DDL execution.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_engine = create_engine(get_admin_url())
+    dummy_meta = MetaData()
+
+    try:
+        with pytest.raises(PermissionError, match=r"Connection mismatch.*administrative/superuser|using administrative/superuser"):
+            safe_drop_all(
+                engine=admin_engine,
+                metadata=dummy_meta,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+                enforce_restricted_role=False,
+            )
+
+        with pytest.raises(PermissionError, match=r"Connection mismatch.*administrative/superuser|using administrative/superuser"):
+            safe_create_all(
+                engine=admin_engine,
+                metadata=dummy_meta,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+                enforce_restricted_role=False,
+            )
+    finally:
+        admin_engine.dispose()
+
+
+def test_30_safe_target_url_combined_with_different_database_engine_rejected(monkeypatch):
+    """
+    Section 2 Requirement 2: A safe target_url combined with an engine connected to a different
+    database is rejected.
+    target_url specifies scheme_saathi_test, but engine connects to scheme_saathi_migration_test.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    diff_db_engine = create_engine(get_migration_test_db_url())
+    dummy_meta = MetaData()
+
+    try:
+        with pytest.raises(ValueError, match=r"Connection mismatch.*database"):
+            safe_drop_all(
+                engine=diff_db_engine,
+                metadata=dummy_meta,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+            )
+
+        with pytest.raises(ValueError, match=r"Connection mismatch.*database"):
+            safe_create_all(
+                engine=diff_db_engine,
+                metadata=dummy_meta,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+            )
+    finally:
+        diff_db_engine.dispose()
+
+
+def test_31_restricted_role_url_combined_with_different_role_engine_rejected(monkeypatch):
+    """
+    Section 2 Requirement 3: A restricted-role URL combined with an engine authenticated as a
+    different role is rejected.
+    target_url specifies scheme_saathi_test_user, but engine connects as a different user.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_url = get_admin_url()
+    admin_engine = create_engine(admin_url)
+    diff_role = f"test_diff_user_{uuid.uuid4().hex[:6]}"
+    test_pwd = os.getenv("TEST_DB_PASSWORD")
+    if not test_pwd:
+        pytest.skip("TEST_DB_PASSWORD required for role test")
+
+    try:
+        with admin_engine.connect() as conn:
+            conn.execute(text(f'CREATE ROLE "{diff_role}" WITH LOGIN PASSWORD \'{test_pwd}\';'))
+            conn.execute(text(f'GRANT CONNECT, TEMPORARY ON DATABASE "scheme_saathi_test" TO "{diff_role}";'))
+            conn.commit()
+
+        parsed = normalize_db_url(TEST_DATABASE_URL)
+        diff_url = f"postgresql://{diff_role}:{test_pwd}@{parsed.host}:{parsed.port or 5432}/scheme_saathi_test"
+        diff_engine = create_engine(diff_url)
+
+        try:
+            with pytest.raises(PermissionError, match=r"Connection mismatch.*role"):
+                safe_create_all(
+                    engine=diff_engine,
+                    metadata=MetaData(),
+                    target_url=TEST_DATABASE_URL,
+                    app_url=settings.DATABASE_URL,
+                    purpose=REGULAR_TEST_PURPOSE,
+                )
+        finally:
+            diff_engine.dispose()
+    finally:
+        with admin_engine.connect() as conn:
+            conn.execute(text(f'REVOKE ALL ON DATABASE "scheme_saathi_test" FROM "{diff_role}";'))
+            conn.execute(text(f'DROP ROLE IF EXISTS "{diff_role}";'))
+            conn.commit()
+        admin_engine.dispose()
+
+
+def test_32_safe_drop_all_never_executes_ddl_on_mismatch_and_leaves_tables_unchanged(monkeypatch):
+    """
+    Section 2 Requirements 4 & 10: safe_drop_all never executes DDL after a connection mismatch,
+    leaving existing tables unchanged.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    test_engine = create_engine(TEST_DATABASE_URL)
+    admin_engine = create_engine(get_admin_url())
+
+    meta = MetaData()
+    tbl_name = f"canary_drop_all_{uuid.uuid4().hex[:6]}"
+    canary_table = Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    try:
+        # 1. Create table using legitimate test connection
+        with test_engine.connect() as conn:
+            canary_table.create(bind=conn)
+            conn.commit()
+
+        # Verify table exists in test DB
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name in insp.get_table_names()
+
+        # 2. Attempt safe_drop_all with mismatched admin engine
+        with pytest.raises(PermissionError, match=r"Connection mismatch.*administrative/superuser|using administrative/superuser"):
+            safe_drop_all(
+                engine=admin_engine,
+                metadata=meta,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+            )
+
+        # 3. Assert existing table is STILL PRESENT and unchanged in test DB
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name in insp.get_table_names(), "Canary table was unexpectedly dropped after connection mismatch!"
+    finally:
+        with test_engine.connect() as conn:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{tbl_name}";'))
+            conn.commit()
+        test_engine.dispose()
+        admin_engine.dispose()
+
+
+def test_33_safe_create_all_never_executes_ddl_on_mismatch_and_leaves_state_unchanged(monkeypatch):
+    """
+    Section 2 Requirements 5 & 10: safe_create_all never executes DDL after a connection mismatch,
+    leaving database state unchanged.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    test_engine = create_engine(TEST_DATABASE_URL)
+    admin_engine = create_engine(get_admin_url())
+
+    meta = MetaData()
+    tbl_name = f"canary_create_all_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    try:
+        # Verify table does not exist
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name not in insp.get_table_names()
+
+        # Attempt safe_create_all with mismatched admin engine
+        with pytest.raises(PermissionError, match=r"Connection mismatch.*administrative/superuser|using administrative/superuser"):
+            safe_create_all(
+                engine=admin_engine,
+                metadata=meta,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+            )
+
+        # Verify table was NOT created in test DB
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name not in insp.get_table_names(), "Canary table was unexpectedly created after connection mismatch!"
+    finally:
+        test_engine.dispose()
+        admin_engine.dispose()
+
+
+def test_34_safe_create_schema_never_executes_ddl_on_mismatch_and_leaves_state_unchanged(monkeypatch):
+    """
+    Section 2 Requirements 6 & 10: safe_create_schema never executes DDL after a connection mismatch,
+    leaving schemas unchanged.
+    """
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+    migration_engine = create_engine(get_migration_test_db_url())
+    test_db_engine = create_engine(TEST_DATABASE_URL)  # points to wrong DB (scheme_saathi_test instead of migration DB)
+    schema_name = f"migtest_mismatch_create_{uuid.uuid4().hex[:6]}"
+
+    try:
+        with pytest.raises(ValueError, match=r"Connection mismatch.*database"):
+            safe_create_schema(
+                engine=test_db_engine,
+                schema_name=schema_name,
+                target_url=get_migration_test_db_url(),
+                app_url=settings.DATABASE_URL,
+                purpose=MIGRATION_TEST_PURPOSE,
+                enforce_restricted_role=True,
+                expected_role=TEST_RUNTIME_ROLE,
+            )
+
+        # Verify schema was NOT created in migration DB
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert not res, "Schema was unexpectedly created after connection mismatch!"
+    finally:
+        test_db_engine.dispose()
+        migration_engine.dispose()
+
+
+def test_35_safe_drop_schema_never_executes_ddl_on_mismatch_and_leaves_schemas_unchanged(monkeypatch):
+    """
+    Section 2 Requirements 7 & 10: safe_drop_schema never executes DDL after a connection mismatch,
+    leaving existing schemas unchanged.
+    """
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+    migration_engine = create_engine(get_migration_test_db_url())
+    admin_engine = create_engine(get_admin_url())
+    schema_name = f"migtest_mismatch_drop_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # Create schema using legitimate migration connection
+        with migration_engine.connect() as conn:
+            conn.execute(text(f'CREATE SCHEMA "{schema_name}";'))
+            conn.commit()
+
+        # Verify schema exists
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert res, "Pre-condition failed: schema was not created."
+
+        # Attempt safe_drop_schema with mismatched admin engine
+        with pytest.raises(PermissionError, match=r"Connection mismatch.*administrative/superuser|using administrative/superuser"):
+            safe_drop_schema(
+                engine=admin_engine,
+                schema_name=schema_name,
+                target_url=get_migration_test_db_url(),
+                app_url=settings.DATABASE_URL,
+                purpose=MIGRATION_TEST_PURPOSE,
+                enforce_restricted_role=True,
+                expected_role=TEST_RUNTIME_ROLE,
+            )
+
+        # Verify schema STILL EXISTS in migration DB
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert res, "Schema was unexpectedly dropped after connection mismatch!"
+    finally:
+        with migration_engine.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE;'))
+            conn.commit()
+        migration_engine.dispose()
+        admin_engine.dispose()
+
+
+def test_36_correct_restricted_role_connection_successfully_executes_permitted_ddl(monkeypatch):
+    """
+    Section 2 Requirement 8: The correct restricted-role connection successfully executes permitted test operations.
+    Using verified scheme_saathi_test_user, safe_create_all, safe_drop_all, safe_create_schema,
+    and safe_drop_schema all succeed.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+
+    meta = MetaData()
+    tbl_name = f"canary_perm_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_perm_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # Table lifecycle on regular test DB with restricted role
+        safe_create_all(
+            engine=test_engine,
+            metadata=meta,
+            target_url=TEST_DATABASE_URL,
+            app_url=settings.DATABASE_URL,
+            purpose=REGULAR_TEST_PURPOSE,
+            enforce_restricted_role=True,
+            expected_role=TEST_RUNTIME_ROLE,
+        )
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name in insp.get_table_names()
+
+        safe_drop_all(
+            engine=test_engine,
+            metadata=meta,
+            target_url=TEST_DATABASE_URL,
+            app_url=settings.DATABASE_URL,
+            purpose=REGULAR_TEST_PURPOSE,
+            enforce_restricted_role=True,
+            expected_role=TEST_RUNTIME_ROLE,
+        )
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name not in insp.get_table_names()
+
+        # Schema lifecycle on migration test DB with restricted role
+        safe_create_schema(
+            engine=migration_engine,
+            schema_name=schema_name,
+            target_url=get_migration_test_db_url(),
+            app_url=settings.DATABASE_URL,
+            purpose=MIGRATION_TEST_PURPOSE,
+            enforce_restricted_role=True,
+            expected_role=TEST_RUNTIME_ROLE,
+        )
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert res
+
+        safe_drop_schema(
+            engine=migration_engine,
+            schema_name=schema_name,
+            target_url=get_migration_test_db_url(),
+            app_url=settings.DATABASE_URL,
+            purpose=MIGRATION_TEST_PURPOSE,
+            enforce_restricted_role=True,
+            expected_role=TEST_RUNTIME_ROLE,
+        )
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert not res
+    finally:
+        test_engine.dispose()
+        migration_engine.dispose()
+
+
+def test_37_actual_execution_connection_checked_immediately_before_ddl(monkeypatch):
+    """
+    Section 2 Requirement 9: The actual execution connection is checked immediately before DDL.
+    Proves that verification inspects the live Connection object directly and executes
+    DDL through that exact verified Connection without releasing it.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    with test_engine.connect() as conn:
+        ident = verify_connection_isolation(
+            conn=conn,
+            target_url=TEST_DATABASE_URL,
+            app_url=settings.DATABASE_URL,
+            expected_purpose=REGULAR_TEST_PURPOSE,
+            enforce_opt_in=True,
+            enforce_restricted_role=True,
+            expected_role=TEST_RUNTIME_ROLE,
+        )
+        assert ident.is_connected is True
+        assert ident.current_database == "scheme_saathi_test"
+        assert ident.current_user == TEST_RUNTIME_ROLE
+        assert ident.is_superuser is False
+        assert not conn.closed, "Connection was closed during verification!"
+
+    test_engine.dispose()
+
+
+def test_38_safe_target_url_combined_with_app_db_engine_rejected_and_app_db_untouched(monkeypatch):
+    """
+    Section 2 Requirements 1, 2 & 10: Supplying a safe disposable target URL with an engine
+    pointing to the active application database is unconditionally rejected, leaving the
+    application database completely untouched.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    app_engine = create_engine(settings.DATABASE_URL)
+    dummy_meta = MetaData()
+
+    # Pre-condition: count application DB tables before attempt
+    with app_engine.connect() as conn:
+        insp = inspect(conn)
+        tables_before = set(insp.get_table_names())
+
+    try:
+        with pytest.raises((ValueError, PermissionError), match=r"Connection mismatch|active application database"):
+            safe_drop_all(
+                engine=app_engine,
+                metadata=dummy_meta,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+            )
+
+        # Assert application database tables are completely unchanged
+        with app_engine.connect() as conn:
+            insp = inspect(conn)
+            tables_after = set(insp.get_table_names())
+            assert tables_before == tables_after, "Application database tables were modified by safe_drop_all!"
+    finally:
+        app_engine.dispose()

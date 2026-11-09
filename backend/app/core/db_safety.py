@@ -27,6 +27,7 @@ Trust Model:
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import argparse
+from contextlib import contextmanager
 import os
 import re
 import socket
@@ -34,7 +35,7 @@ import sys
 from typing import Sequence, Any, Callable
 
 from sqlalchemy import create_engine, text, inspect
-from sqlalchemy.engine import make_url, URL, Engine
+from sqlalchemy.engine import make_url, URL, Engine, Connection
 from sqlalchemy.schema import MetaData
 
 
@@ -315,10 +316,10 @@ def setup_test_roles(
                 f'NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD \'{safe_password}\';'
             ))
 
-        # 2. Inspect role memberships and inherited privileges; revoke unsafe memberships
+        # 2. Inspect all role memberships granted to the runtime role; revoke all memberships to prevent privilege escalation
         memberships = conn.execute(
             text("""
-                SELECT r.rolname, r.rolsuper, r.rolcreaterole, r.rolcreatedb
+                SELECT r.rolname
                 FROM pg_auth_members m
                 JOIN pg_roles r ON r.oid = m.roleid
                 JOIN pg_roles u ON u.oid = m.member
@@ -327,11 +328,28 @@ def setup_test_roles(
             {"role": validated_role},
         ).mappings().fetchall()
         for m in memberships:
-            member_name = m["rolname"]
-            if m["rolsuper"] or m["rolcreaterole"] or m["rolcreatedb"] or member_name.lower() in ADMIN_ROLES:
-                conn.execute(text(f'REVOKE "{member_name}" FROM "{validated_role}";'))
+            member_name = validate_pg_identifier(m["rolname"], "role membership")
+            conn.execute(text(f'REVOKE "{member_name}" FROM "{validated_role}";'))
 
-        # 3. Validate role attributes: must have LOGIN, must NOT have any elevated attributes
+        # Verify that zero role memberships remain after revocation
+        remaining_memberships = conn.execute(
+            text("""
+                SELECT r.rolname
+                FROM pg_auth_members m
+                JOIN pg_roles r ON r.oid = m.roleid
+                JOIN pg_roles u ON u.oid = m.member
+                WHERE u.rolname = :role;
+            """),
+            {"role": validated_role},
+        ).mappings().fetchall()
+        if remaining_memberships:
+            rem_names = [r["rolname"] for r in remaining_memberships]
+            raise RuntimeError(
+                f"Role membership cleanup failed: role '{validated_role}' retains unexpected memberships: {rem_names}. "
+                f"Zero role memberships required for dedicated runtime role."
+            )
+
+        # 3. Validate role attributes: must have LOGIN, must NOT have any elevated attributes, NOINHERIT
         role_attrs = conn.execute(
             text(
                 "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, "
@@ -354,6 +372,8 @@ def setup_test_roles(
             raise ValueError(f"Role '{validated_role}' has unexpected REPLICATION privilege!")
         if role_attrs["rolbypassrls"]:
             raise ValueError(f"Role '{validated_role}' has unexpected BYPASSRLS privilege!")
+        if role_attrs["rolinherit"]:
+            raise ValueError(f"Role '{validated_role}' has unexpected INHERIT privilege! rolinherit must be FALSE.")
 
         # 4. Explicitly revoke permissions from test_role on application database (scheme_saathi)
         # NOTE: NEVER REVOKE CONNECT FROM PUBLIC! Only revoke from this specific test role.
@@ -391,14 +411,42 @@ def setup_test_roles(
 
         conn.commit()
 
-    # 7. Final Privilege & Attribute Verification
+    # 7. Final Privilege, Attribute & Membership Verification
     with engine.connect() as conn:
         verify_attrs = conn.execute(
-            text("SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = :role;"),
+            text(
+                "SELECT rolsuper, rolcreaterole, rolcreatedb, rolcanlogin, "
+                "rolreplication, rolbypassrls, rolinherit "
+                "FROM pg_roles WHERE rolname = :role;"
+            ),
             {"role": validated_role},
         ).mappings().first()
-        if verify_attrs["rolsuper"] or verify_attrs["rolcreaterole"] or verify_attrs["rolcreatedb"]:
-            raise RuntimeError(f"Security verification failed: role '{validated_role}' retains elevated privileges.")
+        if not verify_attrs:
+            raise RuntimeError(f"Security verification failed: role '{validated_role}' not found.")
+        if (
+            verify_attrs["rolsuper"]
+            or verify_attrs["rolcreaterole"]
+            or verify_attrs["rolcreatedb"]
+            or not verify_attrs["rolcanlogin"]
+            or verify_attrs["rolreplication"]
+            or verify_attrs["rolbypassrls"]
+            or verify_attrs["rolinherit"]
+        ):
+            raise RuntimeError(f"Security verification failed: role '{validated_role}' does not match required restricted attributes.")
+
+        final_members = conn.execute(
+            text("""
+                SELECT r.rolname
+                FROM pg_auth_members m
+                JOIN pg_roles r ON r.oid = m.roleid
+                JOIN pg_roles u ON u.oid = m.member
+                WHERE u.rolname = :role;
+            """),
+            {"role": validated_role},
+        ).mappings().fetchall()
+        if final_members:
+            rem = [r["rolname"] for r in final_members]
+            raise RuntimeError(f"Security verification failed: role '{validated_role}' retains unexpected memberships: {rem}.")
 
     engine.dispose()
 
@@ -543,6 +591,275 @@ def provision_test_database_sentinel(
     engine.dispose()
 
 
+@contextmanager
+def _obtain_connection(engine_or_conn: Engine | Connection):
+    """
+    Yields an active Connection from either an Engine or an existing Connection.
+    Does not close an externally-supplied Connection, but closes checked-out connections.
+    """
+    if isinstance(engine_or_conn, Connection):
+        yield engine_or_conn
+    elif isinstance(engine_or_conn, Engine):
+        with engine_or_conn.connect() as conn:
+            yield conn
+    else:
+        raise TypeError(f"Expected Engine or Connection, got {type(engine_or_conn).__name__}")
+
+
+def verify_connection_isolation(
+    conn: Connection,
+    target_url: str,
+    app_url: str,
+    expected_purpose: str = REGULAR_TEST_PURPOSE,
+    enforce_opt_in: bool = True,
+    opt_in_env_vars: Sequence[str] | None = None,
+    enforce_restricted_role: bool = False,
+    expected_role: str | None = None,
+) -> DatabaseIdentity:
+    """
+    Verifies that the actual live SQLAlchemy connection satisfies all isolation,
+    safety, role restriction, sentinel, and application-separation guarantees.
+
+    Fails closed immediately before any destructive DDL can execute.
+    """
+    # 1. Authorization check
+    if opt_in_env_vars is None:
+        opt_in_env_vars = REGULAR_TEST_OPT_IN_VARS if expected_purpose == REGULAR_TEST_PURPOSE else MIGRATION_TEST_OPT_IN_VARS
+
+    if enforce_opt_in and not is_opted_in(opt_in_env_vars):
+        opt_names = list(opt_in_env_vars)
+        example_var = opt_names[0] if opt_names else "ALLOW_TEST_DB_RESET"
+        raise PermissionError(
+            f"Destructive operation for {expected_purpose} rejected: explicit opt-in required. "
+            f"Set one of {opt_names} to '1' before running. "
+            f"Example: {example_var}=1 pytest tests/ -v"
+        )
+
+    # 2. URL parsing & scheme normalization
+    target_parsed = normalize_db_url(target_url)
+    app_parsed = normalize_db_url(app_url)
+
+    target_db = (target_parsed.database or "").strip().lower()
+    app_db = (app_parsed.database or "").strip().lower()
+    target_port = target_parsed.port or 5432
+    app_port = app_parsed.port or 5432
+    target_user = (target_parsed.username or "").strip()
+
+    if not target_db:
+        raise ValueError(f"Invalid target URL for {expected_purpose}: database name is missing.")
+
+    # 3. Host and IP resolution
+    target_ips = resolve_host_ips(target_parsed.host, target_port)
+    app_ips = resolve_host_ips(app_parsed.host, app_port)
+
+    hosts_overlap = bool(target_ips & app_ips) or (
+        target_parsed.host and app_parsed.host and
+        target_parsed.host.strip().lower() == app_parsed.host.strip().lower()
+    )
+    same_db_name = (target_db == app_db)
+    same_port = (target_port == app_port)
+
+    if same_db_name and same_port and hosts_overlap:
+        raise ValueError(
+            f"Unsafe target for {expected_purpose}: Target URL points to the active application database "
+            f"'{target_parsed.database}' on host '{target_parsed.host}:{target_port}' "
+            f"(resolved IPs: {target_ips & app_ips}). Operation rejected."
+        )
+
+    # 4. Live Application Database Check
+    app_ident = inspect_database_identity(app_url)
+    if not app_ident.is_connected:
+        raise RuntimeError(
+            f"Application database at '{mask_url_password(app_url)}' is unreachable ({app_ident.connection_error}). "
+            f"Cannot verify target isolation against active application database. Failing closed."
+        )
+    app_actual_db = (app_ident.current_database or app_db).strip().lower()
+
+    # 5. Live Inspection of the ACTUAL Execution Connection (conn)
+    # 5.1 current_database()
+    try:
+        actual_db_raw = conn.execute(text("SELECT current_database();")).scalar()
+        if not actual_db_raw:
+            raise RuntimeError("SELECT current_database() returned empty on actual execution connection.")
+        actual_db = str(actual_db_raw).strip()
+    except Exception as e:
+        raise RuntimeError(f"Failed to query current_database() on actual execution connection: {e}")
+
+    # 5.2 current_user
+    user_query_error = None
+    actual_user = None
+    try:
+        user_val = conn.execute(text("SELECT current_user;")).scalar()
+        if user_val:
+            actual_user = str(user_val).strip()
+        else:
+            user_query_error = "SELECT current_user returned empty/None on actual connection"
+    except Exception as e:
+        user_query_error = f"Failed to query current_user on actual connection: {e}"
+
+    # 5.3 current_setting('is_superuser')
+    superuser_query_error = None
+    actual_is_superuser = False
+    actual_is_superuser_verified = False
+    try:
+        super_val = conn.execute(text("SELECT current_setting('is_superuser');")).scalar()
+        if super_val is not None:
+            actual_is_superuser = (str(super_val).strip().lower() == "on")
+            actual_is_superuser_verified = True
+        else:
+            superuser_query_error = "current_setting('is_superuser') returned None on actual connection"
+    except Exception as e:
+        superuser_query_error = f"Failed to query current_setting('is_superuser') on actual connection: {e}"
+
+    is_admin_conn = actual_is_superuser or (actual_user is not None and actual_user.lower() in ADMIN_ROLES)
+    target_is_admin = bool(target_user and target_user.lower() in ADMIN_ROLES)
+
+    # 6. Restricted Runtime Role Enforcement (Fail-Closed, Checked First)
+    if enforce_restricted_role:
+        if not expected_role or not isinstance(expected_role, str) or not expected_role.strip():
+            raise ValueError(
+                "Restricted role enforcement failed: expected_role must be explicitly specified "
+                "when enforce_restricted_role=True. Missing expected_role is forbidden."
+            )
+        expected_role_clean = expected_role.strip()
+
+        if user_query_error or not actual_user:
+            raise RuntimeError(
+                f"Destructive operation rejected: failed to query or verify target database current_user "
+                f"({user_query_error or 'user is empty'}). An unverified role cannot be trusted."
+            )
+
+        if superuser_query_error or not actual_is_superuser_verified:
+            raise RuntimeError(
+                f"Destructive operation rejected: failed to query or verify target superuser status "
+                f"({superuser_query_error or 'superuser status unverified'}). "
+                f"An unverified superuser status cannot be trusted."
+            )
+
+        if is_admin_conn:
+            raise PermissionError(
+                f"Destructive operation rejected: target connection is using administrative/superuser role "
+                f"'{actual_user}'. Fallback execution must use the restricted runtime role '{expected_role_clean}'."
+            )
+
+        if actual_user != expected_role_clean:
+            raise PermissionError(
+                f"Destructive operation rejected: target connected as '{actual_user}', "
+                f"expected restricted runtime role '{expected_role_clean}'."
+            )
+
+    # 7. Role & Engine Mismatch Checks
+    # 7.1 Administrative engine mismatch:
+    # A safe target URL (specifying a non-administrative role) combined with an administrative
+    # engine (e.g. postgres, root) is rejected before DDL execution.
+    if is_admin_conn and actual_user and actual_user.lower() in ADMIN_ROLES and target_user and target_user.lower() not in ADMIN_ROLES:
+        raise PermissionError(
+            f"Connection mismatch: actual connection is using administrative/superuser role '{actual_user}', "
+            f"but target URL specifies non-administrative role '{target_user}'. DDL execution rejected."
+        )
+
+    # 7.2 User / Role mismatch
+    if target_user and actual_user and actual_user.lower() != target_user.lower():
+        raise PermissionError(
+            f"Connection mismatch: actual connection authenticated as role '{actual_user}', "
+            f"but target URL specifies role '{target_user}'. DDL execution rejected."
+        )
+
+    actual_db_lower = actual_db.lower()
+
+    # 7.3 Database mismatch
+    if actual_db_lower != target_db:
+        raise ValueError(
+            f"Connection mismatch: actual connection is to database '{actual_db}', "
+            f"but target URL specifies '{target_db}'. DDL execution rejected."
+        )
+
+    # 8. Application Database Collision Check on the actual connection
+    if actual_db_lower == app_actual_db:
+        raise ValueError(
+            f"Unsafe target for {expected_purpose}: Actual connection's database '{actual_db}' "
+            f"matches the active application database '{app_actual_db}'! "
+            f"Rejection is unconditional across all hostnames, ports, driver schemes, and proxy endpoints."
+        )
+
+    # 9. Optional catalog queries protected by SAVEPOINT (do not abort transaction on permission denied)
+    actual_oid = None
+    permission_denied_catalogs = False
+    try:
+        with conn.begin_nested():
+            actual_oid = conn.execute(
+                text("SELECT oid FROM pg_database WHERE datname = current_database();")
+            ).scalar()
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "permission denied" in err_msg or "42501" in err_msg:
+            permission_denied_catalogs = True
+
+    actual_sysid = None
+    try:
+        with conn.begin_nested():
+            actual_sysid = conn.execute(
+                text("SELECT system_identifier FROM pg_control_system();")
+            ).scalar()
+    except Exception:
+        permission_denied_catalogs = True
+
+    if actual_sysid and app_ident.system_identifier:
+        if actual_sysid == app_ident.system_identifier:
+            if actual_oid and app_ident.db_oid and actual_oid == app_ident.db_oid:
+                raise ValueError(
+                    f"Unsafe target for {expected_purpose}: Actual connection shares exact physical "
+                    f"cluster and OID identity with application database "
+                    f"(cluster={actual_sysid}, oid={actual_oid})."
+                )
+
+    # 10. In-Database Sentinel Verification on the actual connection
+    sentinel = read_sentinel_record(conn)
+    if sentinel is None:
+        raise ValueError(
+            f"Unsafe target for {expected_purpose}: Database '{actual_db}' lacks "
+            f"the required in-database disposable sentinel record ({SENTINEL_TABLE_NAME}). "
+            f"A missing sentinel causes an immediate failure. Tests never automatically provision sentinels. "
+            f"Administrative provisioning is required before running tests."
+        )
+
+    if not sentinel.is_disposable:
+        raise ValueError(
+            f"Unsafe target for {expected_purpose}: Database '{actual_db}' sentinel "
+            f"explicitly marks is_disposable=FALSE. Refusing destructive operations."
+        )
+
+    if sentinel.purpose != expected_purpose:
+        raise ValueError(
+            f"Conflicting database identity: Target database '{actual_db}' has sentinel "
+            f"purpose '{sentinel.purpose}', but current execution requires '{expected_purpose}'. "
+            f"Cross-role destructive execution rejected."
+        )
+
+    if (sentinel.database_name or "").strip().lower() != actual_db_lower:
+        raise ValueError(
+            f"Conflicting database identity: Sentinel recorded database_name '{sentinel.database_name}' "
+            f"does not match actual connected database '{actual_db}'. Failing closed."
+        )
+
+    return DatabaseIdentity(
+        url=target_url,
+        database_name=actual_db_lower,
+        resolved_ips=target_ips,
+        port=target_port,
+        is_connected=True,
+        current_database=actual_db,
+        current_user=actual_user,
+        user_query_error=user_query_error,
+        is_superuser=actual_is_superuser,
+        is_superuser_verified=actual_is_superuser_verified,
+        superuser_query_error=superuser_query_error,
+        system_identifier=actual_sysid,
+        db_oid=actual_oid,
+        permission_denied_catalogs=permission_denied_catalogs,
+    )
+
+
 def verify_database_isolation(
     target_url: str,
     app_url: str,
@@ -613,17 +930,7 @@ def verify_database_isolation(
             f"(resolved IPs: {target_ips & app_ips}). Operation rejected."
         )
 
-    # 4. Live Application Database Identity Check
-    app_ident = inspect_database_identity(app_url)
-    if not app_ident.is_connected:
-        raise RuntimeError(
-            f"Application database at '{mask_url_password(app_url)}' is unreachable ({app_ident.connection_error}). "
-            f"Cannot verify target isolation against active application database. Failing closed."
-        )
-
-    app_actual_db = (app_ident.current_database or app_db).strip().lower()
-
-    # 5. Live Connected Target PostgreSQL Identity Inspection
+    # 4. Target connectivity and mock-compatibility pre-check
     target_ident = inspect_database_identity(target_url)
     if not target_ident.is_connected:
         if same_db_name:
@@ -635,33 +942,12 @@ def verify_database_isolation(
             f"Cannot verify {expected_purpose} safety: connection to target failed ({target_ident.connection_error})."
         )
 
-    target_actual_db = (target_ident.current_database or "").strip().lower()
-
-    # 6. Unconditional Connected Database Name Comparison
-    if target_actual_db == app_actual_db:
-        raise ValueError(
-            f"Unsafe target for {expected_purpose}: Connected database name '{target_ident.current_database}' "
-            f"matches the active application database name '{app_ident.current_database}'! "
-            f"Rejection is unconditional across all hostnames, ports, driver schemes, and proxy endpoints."
-        )
-
-    # 7. Restricted Runtime Role Enforcement (Fail-Closed)
     if enforce_restricted_role:
-        if not expected_role or not isinstance(expected_role, str) or not expected_role.strip():
-            raise ValueError(
-                "Restricted role enforcement failed: expected_role must be explicitly specified "
-                "when enforce_restricted_role=True. Missing expected_role is forbidden."
-            )
-        expected_role_clean = expected_role.strip()
-
-        # Require a non-empty, successfully verified current_user
         if target_ident.user_query_error or not target_ident.current_user:
             raise RuntimeError(
                 f"Destructive operation rejected: failed to query or verify target database current_user "
                 f"({target_ident.user_query_error or 'user is empty'}). An unverified role cannot be trusted."
             )
-
-        # Require a successfully verified superuser status
         if target_ident.superuser_query_error or not target_ident.is_superuser_verified:
             raise RuntimeError(
                 f"Destructive operation rejected: failed to query or verify target superuser status "
@@ -669,70 +955,30 @@ def verify_database_isolation(
                 f"An unverified superuser status cannot be trusted."
             )
 
-        # Reject superusers and administrative roles
-        if target_ident.is_superuser or target_ident.current_user.lower() in ADMIN_ROLES:
-            raise PermissionError(
-                f"Destructive operation rejected: target connection is using administrative/superuser role "
-                f"'{target_ident.current_user}'. Fallback execution must use the restricted runtime role '{expected_role_clean}'."
-            )
-
-        # Require exact equality between actual current_user and expected_role
-        if target_ident.current_user != expected_role_clean:
-            raise PermissionError(
-                f"Destructive operation rejected: target connected as '{target_ident.current_user}', "
-                f"expected restricted runtime role '{expected_role_clean}'."
-            )
-
-    # 8. Physical Cluster and Catalog Comparison
-    if target_ident.system_identifier and app_ident.system_identifier:
-        if target_ident.system_identifier == app_ident.system_identifier:
-            if target_ident.db_oid and app_ident.db_oid and target_ident.db_oid == app_ident.db_oid:
-                raise ValueError(
-                    f"Unsafe target for {expected_purpose}: Connected database shares exact physical "
-                    f"cluster and OID identity with application database "
-                    f"(cluster={target_ident.system_identifier}, oid={target_ident.db_oid})."
-                )
-
-    # 9. In-Database Sentinel Verification
+    # 5. Connect and execute verification on live connection
     engine = create_engine(target_url, pool_pre_ping=True)
-    with engine.connect() as conn:
-        sentinel = read_sentinel_record(conn)
-    engine.dispose()
+    try:
+        with engine.connect() as conn:
+            ident = verify_connection_isolation(
+                conn=conn,
+                target_url=target_url,
+                app_url=app_url,
+                expected_purpose=expected_purpose,
+                enforce_opt_in=enforce_opt_in,
+                opt_in_env_vars=opt_in_env_vars,
+                enforce_restricted_role=enforce_restricted_role,
+                expected_role=expected_role,
+            )
+    finally:
+        engine.dispose()
 
-    if sentinel is None:
-        raise ValueError(
-            f"Unsafe target for {expected_purpose}: Database '{target_ident.current_database}' lacks "
-            f"the required in-database disposable sentinel record ({SENTINEL_TABLE_NAME}). "
-            f"A missing sentinel causes an immediate failure. Tests never automatically provision sentinels. "
-            f"Administrative provisioning is required before running tests."
-        )
-
-    if not sentinel.is_disposable:
-        raise ValueError(
-            f"Unsafe target for {expected_purpose}: Database '{target_ident.current_database}' sentinel "
-            f"explicitly marks is_disposable=FALSE. Refusing destructive operations."
-        )
-
-    if sentinel.purpose != expected_purpose:
-        raise ValueError(
-            f"Conflicting database identity: Target database '{target_ident.current_database}' has sentinel "
-            f"purpose '{sentinel.purpose}', but current execution requires '{expected_purpose}'. "
-            f"Cross-role destructive execution rejected."
-        )
-
-    if (sentinel.database_name or "").strip().lower() != target_actual_db:
-        raise ValueError(
-            f"Conflicting database identity: Sentinel recorded database_name '{sentinel.database_name}' "
-            f"does not match actual connected database '{target_ident.current_database}'. Failing closed."
-        )
-
-    return target_ident
+    return ident
 
 
 # ── Centralized Destructive Execution Gateways ─────────────────────────────────
 
 def safe_drop_all(
-    engine: Engine,
+    engine: Engine | Connection,
     metadata: MetaData,
     target_url: str,
     app_url: str,
@@ -742,20 +988,25 @@ def safe_drop_all(
 ) -> None:
     """
     Centralized gatekeeper for metadata.drop_all().
-    Re-verifies identity and authorization immediately prior to dropping tables.
+    Inspects and verifies the actual connection immediately prior to dropping tables,
+    and executes DDL through that exact verified connection.
     """
-    verify_database_isolation(
-        target_url,
-        app_url,
-        expected_purpose=purpose,
-        enforce_restricted_role=enforce_restricted_role,
-        expected_role=expected_role,
-    )
-    metadata.drop_all(bind=engine)
+    with _obtain_connection(engine) as conn:
+        verify_connection_isolation(
+            conn=conn,
+            target_url=target_url,
+            app_url=app_url,
+            expected_purpose=purpose,
+            enforce_opt_in=True,
+            enforce_restricted_role=enforce_restricted_role,
+            expected_role=expected_role,
+        )
+        metadata.drop_all(bind=conn)
+        conn.commit()
 
 
 def safe_create_all(
-    engine: Engine,
+    engine: Engine | Connection,
     metadata: MetaData,
     target_url: str,
     app_url: str,
@@ -765,20 +1016,25 @@ def safe_create_all(
 ) -> None:
     """
     Centralized gatekeeper for metadata.create_all().
-    Verifies identity and authorization immediately prior to creating tables.
+    Inspects and verifies the actual connection immediately prior to creating tables,
+    and executes DDL through that exact verified connection.
     """
-    verify_database_isolation(
-        target_url,
-        app_url,
-        expected_purpose=purpose,
-        enforce_restricted_role=enforce_restricted_role,
-        expected_role=expected_role,
-    )
-    metadata.create_all(bind=engine)
+    with _obtain_connection(engine) as conn:
+        verify_connection_isolation(
+            conn=conn,
+            target_url=target_url,
+            app_url=app_url,
+            expected_purpose=purpose,
+            enforce_opt_in=True,
+            enforce_restricted_role=enforce_restricted_role,
+            expected_role=expected_role,
+        )
+        metadata.create_all(bind=conn)
+        conn.commit()
 
 
 def safe_create_schema(
-    engine: Engine,
+    engine: Engine | Connection,
     schema_name: str,
     target_url: str,
     app_url: str,
@@ -788,23 +1044,26 @@ def safe_create_schema(
 ) -> None:
     """
     Centralized gatekeeper for schema creation.
-    Requires verified migration test database identity and authorization.
+    Requires verified migration test database identity and authorization,
+    and executes schema creation through that exact verified connection.
     """
     validated_schema = validate_pg_identifier(schema_name, "schema name")
-    verify_database_isolation(
-        target_url,
-        app_url,
-        expected_purpose=purpose,
-        enforce_restricted_role=enforce_restricted_role,
-        expected_role=expected_role,
-    )
-    with engine.connect() as conn:
+    with _obtain_connection(engine) as conn:
+        verify_connection_isolation(
+            conn=conn,
+            target_url=target_url,
+            app_url=app_url,
+            expected_purpose=purpose,
+            enforce_opt_in=True,
+            enforce_restricted_role=enforce_restricted_role,
+            expected_role=expected_role,
+        )
         conn.execute(text(f'CREATE SCHEMA "{validated_schema}";'))
         conn.commit()
 
 
 def safe_drop_schema(
-    engine: Engine,
+    engine: Engine | Connection,
     schema_name: str,
     target_url: str,
     app_url: str,
@@ -815,7 +1074,8 @@ def safe_drop_schema(
     """
     Centralized gatekeeper for schema drops.
     Enforces that protected system schemas (public, pg_catalog, etc.) can NEVER be dropped,
-    and requires the target schema to possess an approved test prefix.
+    requires the target schema to possess an approved test prefix, and executes schema
+    drop through that exact verified connection.
     """
     normalized_schema = schema_name.strip().lower()
     if normalized_schema in PROTECTED_SYSTEM_SCHEMAS:
@@ -826,14 +1086,16 @@ def safe_drop_schema(
         raise ValueError(f"Refusing to drop schema '{schema_name}': not an explicitly owned test schema.")
 
     validated_schema = validate_pg_identifier(schema_name, "schema name")
-    verify_database_isolation(
-        target_url,
-        app_url,
-        expected_purpose=purpose,
-        enforce_restricted_role=enforce_restricted_role,
-        expected_role=expected_role,
-    )
-    with engine.connect() as conn:
+    with _obtain_connection(engine) as conn:
+        verify_connection_isolation(
+            conn=conn,
+            target_url=target_url,
+            app_url=app_url,
+            expected_purpose=purpose,
+            enforce_opt_in=True,
+            enforce_restricted_role=enforce_restricted_role,
+            expected_role=expected_role,
+        )
         conn.execute(text(f'DROP SCHEMA IF EXISTS "{validated_schema}" CASCADE;'))
         conn.commit()
 
