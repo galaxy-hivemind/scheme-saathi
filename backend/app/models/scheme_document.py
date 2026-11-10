@@ -33,7 +33,6 @@ class SchemeDocument(Base, TimestampMixin):
         UUID(as_uuid=True),
         ForeignKey("schemes.id", ondelete="RESTRICT"),
         nullable=False,
-        index=True,
     )
     document_type: Mapped[str] = mapped_column(
         String(50),

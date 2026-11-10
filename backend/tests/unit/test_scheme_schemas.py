@@ -345,3 +345,31 @@ def test_top_level_timestamp_validation_and_precedence():
         })
 
 
+def test_all_seven_seed_files_conform_and_svanidhi_classification():
+    """Verify all 7 seed files strictly validate against SchemeSeedSchema, PM-SVANIDHI category is financial_inclusion, and PRID 2303797 date is 2026-08-27."""
+    import json
+    from pathlib import Path
+
+    seed_dir = Path(__file__).resolve().parent.parent.parent / "data" / "schemes"
+    seed_files = list(seed_dir.glob("*.json"))
+    assert len(seed_files) == 7
+
+    validated_schemes = {}
+    for f in seed_files:
+        with open(f, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+        schema = SchemeSeedSchema.model_validate(data)
+        validated_schemes[schema.scheme_code] = schema
+
+    # Verify PM-SVANIDHI classification
+    svanidhi = validated_schemes["PM-SVANIDHI"]
+    assert svanidhi.category == SchemeCategory.FINANCIAL_INCLUSION
+    assert svanidhi.category.value == "financial_inclusion"
+
+    # Verify PRID 2303797 publication date
+    op_evidence = next((e for e in svanidhi.source_evidence if "2303797" in str(e.source_url)), None)
+    assert op_evidence is not None
+    assert op_evidence.publication_date == date(2026, 8, 27)
+
+
+

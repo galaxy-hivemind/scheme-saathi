@@ -36,7 +36,6 @@ class SchemeRuleVersion(Base, TimestampMixin):
         UUID(as_uuid=True),
         ForeignKey("schemes.id", ondelete="RESTRICT"),
         nullable=False,
-        index=True,
     )
     version: Mapped[int] = mapped_column(
         Integer,

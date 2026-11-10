@@ -82,7 +82,6 @@ def upgrade() -> None:
         sa.CheckConstraint("version >= 1", name="ck_scheme_rule_versions_version"),
     )
 
-    op.create_index("ix_scheme_rule_versions_scheme_id", "scheme_rule_versions", ["scheme_id"])
     op.create_index(
         "uq_scheme_rule_versions_active",
         "scheme_rule_versions",
@@ -112,14 +111,11 @@ def upgrade() -> None:
         sa.CheckConstraint("char_length(trim(document_type)) > 0", name="ck_scheme_documents_type_nonempty"),
     )
 
-    op.create_index("ix_scheme_documents_scheme_id", "scheme_documents", ["scheme_id"])
-
 
 def downgrade() -> None:
     """
     Revert Phase 2 tables, indexes, and constraints cleanly.
     """
-    op.drop_index("ix_scheme_documents_scheme_id", table_name="scheme_documents")
     op.drop_table("scheme_documents")
 
     op.drop_index(
@@ -127,7 +123,6 @@ def downgrade() -> None:
         table_name="scheme_rule_versions",
         postgresql_where=sa.text("is_active = true"),
     )
-    op.drop_index("ix_scheme_rule_versions_scheme_id", table_name="scheme_rule_versions")
     op.drop_table("scheme_rule_versions")
 
     op.execute("DROP INDEX IF EXISTS ix_schemes_fts;")

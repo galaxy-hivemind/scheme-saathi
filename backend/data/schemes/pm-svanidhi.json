@@ -5,7 +5,7 @@
   "description": "Central sector micro-credit scheme providing working capital loans to street vendors to build business credit, modernized with higher tranches and credit cards through 2030.",
   "ministry": "Ministry of Housing and Urban Affairs",
   "department": "Urban Livelihoods Division",
-  "category": "employment",
+  "category": "financial_inclusion",
   "geographic_scope": "central",
   "target_beneficiaries": [
     "Urban street vendors",
@@ -85,7 +85,7 @@
       "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2303797",
       "source_type": "pib_release",
       "issuing_authority": "Press Information Bureau",
-      "publication_date": "2026-08-20",
+      "publication_date": "2026-08-27",
       "retrieved_at": "2026-11-10T10:00:00Z",
       "citation": "PIB Press Release PRID 2303797",
       "verification_status": "verified",

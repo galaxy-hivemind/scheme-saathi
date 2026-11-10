@@ -103,6 +103,16 @@ def test_list_schemes_category_filter(client, seeded_db):
     assert data["total"] == 1
     assert data["items"][0]["scheme_code"] == "PM-KISAN"
 
+    # Financial Inclusion -> PM-SVANIDHI
+    res_fi = client.get(
+        "/api/v1/schemes?category=financial_inclusion",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res_fi.status_code == 200
+    data_fi = res_fi.json()["data"]
+    assert data_fi["total"] == 1
+    assert data_fi["items"][0]["scheme_code"] == "PM-SVANIDHI"
+
     # Invalid category -> 422
     res_invalid = client.get(
         "/api/v1/schemes?category=invalid_cat",
@@ -260,4 +270,39 @@ def test_detail_scheme_invalid_uuid_returns_422(client):
     token = _register_and_get_token(client, "scheme.user14@example.com")
     res = client.get("/api/v1/schemes/invalid-not-a-uuid", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 422
+
+
+def test_detail_scheme_malformed_evidence_raises_500(client, db_session):
+    """Malformed persisted source_evidence raises 500 and does NOT silently omit entries."""
+    from datetime import datetime, timezone
+    from app.models.scheme import Scheme
+
+    token = _register_and_get_token(client, "scheme.malformed@example.com")
+    now = datetime.now(timezone.utc)
+    bad_scheme = Scheme(
+        id=uuid.uuid4(),
+        scheme_code="BAD-EVIDENCE-SCHEME",
+        name="Bad Evidence Scheme",
+        short_title="BadEvidence",
+        description="Scheme with corrupted source_evidence JSON",
+        ministry="Ministry of Finance",
+        category="financial_inclusion",
+        geographic_scope="central",
+        target_beneficiaries=["Citizens"],
+        benefits="Some benefits",
+        source_url="https://gov.in/",
+        scheme_status="active",
+        last_retrieved_at=now,
+        last_verified_at=now,
+        source_evidence=[
+            {"claim": "non_existent_claim", "statement": "Invalid"}  # Missing required fields: source_url, retrieved_at, etc.
+        ],
+    )
+    db_session.add(bad_scheme)
+    db_session.commit()
+
+    res = client.get(f"/api/v1/schemes/{bad_scheme.id}", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 500
+    assert "Data integrity error" in res.json()["detail"]
+
 

@@ -3,6 +3,7 @@ Government Scheme Catalogue API endpoints.
 Provides authenticated endpoints for listing/searching and retrieving details of welfare schemes.
 """
 from typing import Optional
+import logging
 import math
 import uuid
 from fastapi import APIRouter, Depends, Query, HTTPException, status
@@ -23,6 +24,7 @@ from app.schemas.scheme import (
 from app.services import scheme_service
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get(
@@ -112,8 +114,17 @@ def get_scheme(
         for entry in scheme.source_evidence:
             try:
                 evidence_entries.append(SourceEvidenceEntry.model_validate(entry))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.error(
+                    "Data integrity violation: persisted source_evidence record for scheme %s failed validation: %s (entry: %s)",
+                    scheme.scheme_code,
+                    exc,
+                    entry,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Data integrity error: malformed source evidence entry in scheme {scheme.scheme_code}",
+                ) from exc
 
     detail_data = SchemeDetailResponse(
         id=scheme.id,
