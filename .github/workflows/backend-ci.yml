@@ -1,0 +1,139 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - 'backend/**'
+  pull_request:
+    branches:
+      - main
+      - 'backend/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Backend Test Suite & Safety Gates
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ci_service_postgres_password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Initialize PostgreSQL CI Service Databases
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          export PGPASSWORD=ci_service_postgres_password
+          psql -h localhost -U postgres -c "CREATE DATABASE scheme_saathi;"
+          psql -h localhost -U postgres -c "CREATE DATABASE scheme_saathi_test;"
+          psql -h localhost -U postgres -c "CREATE DATABASE scheme_saathi_migration_test;"
+
+      - name: Administratively Setup Restricted Role and Sentinels
+        working-directory: backend
+        env:
+          ADMIN_DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/postgres"
+          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
+          ALLOW_TEST_DB_RESET: "1"
+          ALLOW_MIGRATION_TESTS: "1"
+        run: |
+          python -m app.core.db_safety setup-roles --admin-url "$ADMIN_DATABASE_URL" --test-password "$TEST_DB_PASSWORD"
+          python -m app.core.db_safety provision --purpose regular_test --target-url "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi_test" --app-url "$DATABASE_URL"
+          python -m app.core.db_safety provision --purpose migration_test --target-url "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi_migration_test" --app-url "$DATABASE_URL"
+
+      - name: Run Unit Tests (Zero DB Fixtures)
+        working-directory: backend
+        run: |
+          pytest tests/unit/ -v
+
+      - name: Run Database Target Safety Regression Suite
+        working-directory: backend
+        env:
+          ADMIN_DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/postgres"
+          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
+          ALLOW_TEST_DB_RESET: "1"
+          ALLOW_MIGRATION_TESTS: "1"
+        run: |
+          pytest tests/integration/test_db_safety.py -v
+
+      - name: Run Alembic Schema Migration Tests
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
+          ALLOW_MIGRATION_TESTS: "1"
+        run: |
+          pytest tests/integration/test_migrations.py -v
+
+      - name: Run Database Integration Tests (Fallback Restricted Role)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
+          ALLOW_TEST_DB_RESET: "1"
+        run: |
+          pytest tests/integration/test_database.py -v
+
+      - name: Run Database Integration Tests (Testcontainers Isolated)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          USE_TESTCONTAINERS: "1"
+          ALLOW_TEST_DB_RESET: "1"
+        run: |
+          pytest tests/integration/test_database.py -v
+
+      - name: Run Full Backend Test Suite
+        working-directory: backend
+        env:
+          ADMIN_DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/postgres"
+          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
+          ALLOW_TEST_DB_RESET: "1"
+          ALLOW_MIGRATION_TESTS: "1"
+        run: |
+          pytest tests/ -v
+
+      - name: Verify Fail-Closed Authorization (Negative Test)
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
+        run: |
+          # Without ALLOW_TEST_DB_RESET, test_database.py must fail with PermissionError during session fixture setup
+          if pytest tests/integration/test_database.py; then
+            echo "Security violation: tests ran destructively without explicit opt-in!"
+            exit 1
+          else
+            echo "Pass: Tests failed closed as expected when opt-in was omitted."
+          fi

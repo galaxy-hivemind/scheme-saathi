@@ -62,6 +62,33 @@ DISPOSABLE_TEST_MARKERS = ("test", "disposable", "migtest", "migration_test")
 PROTECTED_SYSTEM_SCHEMAS = ("public", "information_schema", "pg_catalog", "pg_toast")
 
 IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,62}$")
+_DEFAULT_ROLE_SENTINEL = object()
+
+
+def get_configured_test_runtime_role() -> str:
+    """Return the single authoritative approved test runtime role name."""
+    env_role = os.getenv("TEST_DB_USER", "").strip()
+    return env_role if env_role else TEST_RUNTIME_ROLE
+
+
+def get_dbapi_sql_composer(raw_conn: Any):
+    """
+    Verify the actual DBAPI connection class at runtime and return the matching
+    driver-specific SQL composition module (psycopg 3 or psycopg2).
+    Never mix drivers or rely on URL scheme assumptions.
+    """
+    conn_module = getattr(type(raw_conn), "__module__", "")
+    if "psycopg2" in conn_module:
+        from psycopg2 import sql as sql_mod
+        return sql_mod
+    elif "psycopg" in conn_module:
+        from psycopg import sql as sql_mod
+        return sql_mod
+    else:
+        raise TypeError(
+            f"Unsupported or unverified DBAPI connection type '{type(raw_conn)}' ({conn_module}). "
+            f"Expected a verified psycopg (v3) or psycopg2 connection."
+        )
 
 
 def validate_pg_identifier(name: str, label: str = "identifier") -> str:
@@ -304,8 +331,8 @@ def setup_test_roles(
             {"role": validated_role},
         ).scalar()
 
-        from psycopg import sql
         raw_conn = conn.connection.dbapi_connection
+        sql = get_dbapi_sql_composer(raw_conn)
         clean_password = password.strip()
         if not role_exists:
             create_stmt = sql.SQL(
@@ -641,7 +668,7 @@ def verify_connection_isolation(
     expected_purpose: str = REGULAR_TEST_PURPOSE,
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] | None = None,
-    expected_role: str = TEST_RUNTIME_ROLE,
+    expected_role: Any = _DEFAULT_ROLE_SENTINEL,
 ) -> DatabaseIdentity:
     """
     Verifies that the actual live SQLAlchemy connection satisfies all isolation,
@@ -651,17 +678,18 @@ def verify_connection_isolation(
     Fails closed immediately before any destructive DDL can execute.
     """
     # 0. Validate expected_role (mandatory non-empty string, cannot be administrative, must match configured runtime role)
-    if expected_role is None:
-        expected_role = TEST_RUNTIME_ROLE
-    if not isinstance(expected_role, str) or not expected_role.strip():
-        raise ValueError("expected_role must be explicitly specified (non-empty string). Missing expected_role is forbidden.")
+    if expected_role is _DEFAULT_ROLE_SENTINEL:
+        expected_role = get_configured_test_runtime_role()
+    elif expected_role is None or not isinstance(expected_role, str) or not expected_role.strip():
+        raise ValueError("expected_role must be explicitly specified (non-empty string). Missing or None expected_role is forbidden.")
+
     expected_role_clean = expected_role.strip()
     if expected_role_clean.lower() in ADMIN_ROLES:
         raise PermissionError(
             f"Security violation: administrative role '{expected_role_clean}' cannot be used as expected test runtime role."
         )
-    configured_runtime_role = os.getenv("TEST_DB_USER", TEST_RUNTIME_ROLE).strip() or TEST_RUNTIME_ROLE
-    if expected_role_clean != TEST_RUNTIME_ROLE and expected_role_clean != configured_runtime_role:
+    configured_runtime_role = get_configured_test_runtime_role()
+    if expected_role_clean != configured_runtime_role:
         raise PermissionError(
             f"Security violation: expected role '{expected_role_clean}' is not the approved, configured "
             f"test runtime role ('{configured_runtime_role}'). Arbitrary roles are forbidden."
@@ -960,7 +988,7 @@ def verify_database_isolation(
     expected_purpose: str = REGULAR_TEST_PURPOSE,
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] | None = None,
-    expected_role: str = TEST_RUNTIME_ROLE,
+    expected_role: Any = _DEFAULT_ROLE_SENTINEL,
 ) -> DatabaseIdentity:
     """
     Central safety validator:
@@ -1076,7 +1104,7 @@ def safe_drop_all(
     target_url: str,
     app_url: str,
     purpose: str = REGULAR_TEST_PURPOSE,
-    expected_role: str = TEST_RUNTIME_ROLE,
+    expected_role: Any = _DEFAULT_ROLE_SENTINEL,
 ) -> None:
     """
     Centralized gatekeeper for metadata.drop_all().
@@ -1101,7 +1129,7 @@ def safe_create_all(
     target_url: str,
     app_url: str,
     purpose: str = REGULAR_TEST_PURPOSE,
-    expected_role: str = TEST_RUNTIME_ROLE,
+    expected_role: Any = _DEFAULT_ROLE_SENTINEL,
 ) -> None:
     """
     Centralized gatekeeper for metadata.create_all().
@@ -1126,7 +1154,7 @@ def safe_create_schema(
     target_url: str,
     app_url: str,
     purpose: str = MIGRATION_TEST_PURPOSE,
-    expected_role: str = TEST_RUNTIME_ROLE,
+    expected_role: Any = _DEFAULT_ROLE_SENTINEL,
 ) -> None:
     """
     Centralized gatekeeper for schema creation.
@@ -1152,7 +1180,7 @@ def safe_drop_schema(
     target_url: str,
     app_url: str,
     purpose: str = MIGRATION_TEST_PURPOSE,
-    expected_role: str = TEST_RUNTIME_ROLE,
+    expected_role: Any = _DEFAULT_ROLE_SENTINEL,
 ) -> None:
     """
     Centralized gatekeeper for schema drops.
@@ -1189,7 +1217,7 @@ def validate_database_target(
     target_label: str = "test database",
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] = REGULAR_TEST_OPT_IN_VARS,
-    expected_role: str = TEST_RUNTIME_ROLE,
+    expected_role: Any = _DEFAULT_ROLE_SENTINEL,
 ) -> None:
     """Compatibility bridge routing callers to verify_database_isolation."""
     purpose = REGULAR_TEST_PURPOSE if "migration" not in target_label.lower() else MIGRATION_TEST_PURPOSE

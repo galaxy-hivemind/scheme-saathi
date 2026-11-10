@@ -74,6 +74,12 @@ Section 10 Testcontainers Role Provisioning & Identifier Injection (Tests 57-58)
 
 Section 11 Unsupported Keyword Arguments Rejection (Test 59):
 59. Calling security APIs with obsolete kwargs like enforce_restricted_role raises TypeError.
+
+Section 12 Driver Consistency & Authoritative Role Validation (Tests 60-63):
+60. Explicit expected_role=None or empty raises ValueError across all gateways.
+61. Configured TEST_DB_USER rejects hardcoded default role as unapproved alternative.
+62. Driver consistency: get_dbapi_sql_composer selects matching composables and rejects unknown DBAPI.
+63. Container cleanup happens when Testcontainers provisioning fails.
 """
 from pathlib import Path
 import os
@@ -111,6 +117,8 @@ from app.core.db_safety import (
     safe_create_all,
     safe_create_schema,
     safe_drop_schema,
+    get_dbapi_sql_composer,
+    get_configured_test_runtime_role,
 )
 from tests.conftest import (
     get_test_database_url,
@@ -2354,5 +2362,199 @@ def test_59_unsupported_keyword_arguments_raise_type_error(monkeypatch):
 
     test_engine.dispose()
     migration_engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 12: DRIVER CONSISTENCY & AUTHORITATIVE ROLE VALIDATION (60 TO 63)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_60_explicit_none_or_empty_expected_role_raises_value_error(monkeypatch):
+    """
+    Requirement 5 / Finding 2: Explicit expected_role=None or empty string must not
+    silently bypass validation or default. It must raise ValueError across all gateways.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+    meta = MetaData()
+
+    with test_engine.connect() as conn:
+        # None expected_role
+        with pytest.raises(ValueError, match="expected_role must be explicitly specified"):
+            verify_connection_isolation(
+                conn=conn,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                expected_role=None,
+            )
+
+        # Empty string expected_role
+        with pytest.raises(ValueError, match="expected_role must be explicitly specified"):
+            verify_connection_isolation(
+                conn=conn,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                expected_role="",
+            )
+
+        # safe_create_all with expected_role=None
+        with pytest.raises(ValueError, match="expected_role must be explicitly specified"):
+            safe_create_all(
+                conn,
+                meta,
+                TEST_DATABASE_URL,
+                settings.DATABASE_URL,
+                expected_role=None,
+            )
+
+        # safe_drop_all with expected_role=None
+        with pytest.raises(ValueError, match="expected_role must be explicitly specified"):
+            safe_drop_all(
+                conn,
+                meta,
+                TEST_DATABASE_URL,
+                settings.DATABASE_URL,
+                expected_role=None,
+            )
+
+    with migration_engine.connect() as mig_conn:
+        # safe_create_schema with expected_role=None
+        with pytest.raises(ValueError, match="expected_role must be explicitly specified"):
+            safe_create_schema(
+                mig_conn,
+                "test_dummy_sch",
+                get_migration_test_db_url(),
+                settings.DATABASE_URL,
+                expected_role=None,
+            )
+
+        # safe_drop_schema with expected_role=None
+        with pytest.raises(ValueError, match="expected_role must be explicitly specified"):
+            safe_drop_schema(
+                mig_conn,
+                "test_dummy_sch",
+                get_migration_test_db_url(),
+                settings.DATABASE_URL,
+                expected_role=None,
+            )
+
+    # verify_database_isolation with expected_role=None
+    with pytest.raises(ValueError, match="expected_role must be explicitly specified"):
+        verify_database_isolation(
+            TEST_DATABASE_URL,
+            settings.DATABASE_URL,
+            expected_role=None,
+        )
+
+    test_engine.dispose()
+    migration_engine.dispose()
+
+
+def test_61_custom_configured_test_db_user_rejects_default_runtime_role(monkeypatch):
+    """
+    Requirement 5 / Finding 2: Only the configured approved runtime role may be accepted.
+    When a custom TEST_DB_USER is configured, the hardcoded default 'scheme_saathi_test_user'
+    must not remain an accepted alternative and must be rejected with PermissionError.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("TEST_DB_USER", "custom_approved_test_user")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    with test_engine.connect() as conn:
+        with pytest.raises(PermissionError, match=r"is not the approved, configured test runtime role \('custom_approved_test_user'\)"):
+            verify_connection_isolation(
+                conn=conn,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                expected_role="scheme_saathi_test_user",
+            )
+
+    test_engine.dispose()
+
+
+def test_62_driver_consistency_and_runtime_dbapi_verification():
+    """
+    Requirement 5 / Finding 1: Ensure driver consistency.
+    get_dbapi_sql_composer verifies the actual DBAPI connection class at runtime
+    and selects the matching driver composition module (psycopg 3 or psycopg2).
+    Unknown connection types are rejected with TypeError rather than crashing inside driver internals.
+    """
+    import psycopg
+    from psycopg import sql as sql3
+    import psycopg2
+    from psycopg2 import sql as sql2
+
+    # 1. psycopg 3 connection class returns psycopg 3 sql composables
+    class MockPsycopg3Connection:
+        __module__ = "psycopg.connection"
+
+    composer3 = get_dbapi_sql_composer(MockPsycopg3Connection())
+    assert composer3 is sql3
+
+    # 2. psycopg2 connection class returns psycopg2 sql composables
+    class MockPsycopg2Connection:
+        __module__ = "psycopg2.extensions"
+
+    composer2 = get_dbapi_sql_composer(MockPsycopg2Connection())
+    assert composer2 is sql2
+
+    # 3. Unknown DBAPI connection class is rejected with TypeError
+    class MockUnknownConnection:
+        __module__ = "sqlite3"
+
+    with pytest.raises(TypeError, match="Unsupported or unverified DBAPI connection type"):
+        get_dbapi_sql_composer(MockUnknownConnection())
+
+
+def test_63_testcontainers_provisioning_failure_cleans_up_container(monkeypatch):
+    """
+    Requirement 3.E: Container cleanup happens even when provisioning fails.
+    If container startup or provisioning raises an exception, the started container is
+    stopped and discarded, and cached container state is reset.
+    """
+    import tests.conftest as conftest_mod
+
+    monkeypatch.setenv("USE_TESTCONTAINERS", "1")
+    monkeypatch.setattr(conftest_mod, "USE_TESTCONTAINERS", True)
+    monkeypatch.setattr(conftest_mod, "_test_container", None)
+    monkeypatch.setattr(conftest_mod, "_container_runtime_url", None)
+
+    class DummyContainer:
+        def __init__(self):
+            self.stopped = False
+
+        def start(self):
+            pass
+
+        def get_connection_url(self):
+            return "postgresql+psycopg://test:test@localhost:5432/test"
+
+        def stop(self):
+            self.stopped = True
+
+    dummy = DummyContainer()
+
+    def mock_postgres_container(*args, **kwargs):
+        return dummy
+
+    monkeypatch.setattr("testcontainers.community.postgres.PostgresContainer", mock_postgres_container, raising=False)
+    monkeypatch.setattr("testcontainers.postgres.PostgresContainer", mock_postgres_container, raising=False)
+
+    def failing_provision(*args, **kwargs):
+        raise RuntimeError("Simulated provisioning failure inside container")
+
+    monkeypatch.setattr("app.core.db_safety.provision_test_database_sentinel", failing_provision)
+    monkeypatch.setattr(conftest_mod, "provision_test_database_sentinel", failing_provision)
+
+    with pytest.raises(Exception):
+        conftest_mod.get_test_database_url()
+
+    assert dummy.stopped is True, "Started container was not stopped on provisioning failure!"
+    assert conftest_mod._test_container is None
+    assert conftest_mod._container_runtime_url is None
+
 
 

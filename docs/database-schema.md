@@ -44,12 +44,18 @@ Regardless of environment variables, the system verifies that the target does no
 - Cross-role authorization is strictly rejected.
 - Unit tests run completely free of database fixtures and opt-in requirements (`pytest tests/unit/`).
 
-### 5. Centralized Destructive Execution Gateways
+### 5. Centralized Destructive Execution Gateways & Live Catalog Revalidation
 Destructive DDL calls cannot be called directly; they must route through verified gatekeeper functions:
-- `safe_drop_all(engine, metadata, target_url, app_url, purpose)`
-- `safe_create_all(engine, metadata, target_url, app_url, purpose)`
-- `safe_create_schema(engine, schema_name, target_url, app_url, purpose)`
-- `safe_drop_schema(engine, schema_name, target_url, app_url, purpose)` (strictly forbids dropping `public`, `pg_catalog`, or `information_schema`)
+- `safe_drop_all(engine_or_conn, metadata, target_url, app_url, purpose, expected_role)`
+- `safe_create_all(engine_or_conn, metadata, target_url, app_url, purpose, expected_role)`
+- `safe_create_schema(engine_or_conn, schema_name, target_url, app_url, purpose, expected_role)`
+- `safe_drop_schema(engine_or_conn, schema_name, target_url, app_url, purpose, expected_role)` (strictly forbids dropping `public`, `pg_catalog`, or `information_schema`)
+
+Every gateway operation:
+1. Validates `expected_role` against the authoritative configured test runtime role (`TEST_DB_USER` or `scheme_saathi_test_user`), rejecting missing, `None`, empty, or unapproved roles before DDL.
+2. Directly queries PostgreSQL system catalogs (`pg_roles`, `pg_auth_members`) on the exact live execution connection immediately prior to DDL, verifying `rolsuper = FALSE`, `rolcreatedb = FALSE`, `rolcreaterole = FALSE`, `rolcanlogin = TRUE`, `rolinherit = FALSE`, `rolreplication = FALSE`, `rolbypassrls = FALSE`, and zero memberships.
+3. Preserves caller-owned active transactions and nested savepoints; gateway operations never commit unrelated caller DML.
+4. Uses driver-verified SQL composition (`get_dbapi_sql_composer`) and validated PostgreSQL identifiers. Container instances generate cryptographically random credentials per instance with automatic teardown on failure.
 
 ---
 
