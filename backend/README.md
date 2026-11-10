@@ -207,7 +207,20 @@ curl -X GET http://localhost:8000/api/v1/profile \
   -H "Authorization: Bearer <token>"
 ```
 
-### 5. Update Profile
+### 5. Create or Complete Profile (Idempotent)
+```bash
+curl -X POST http://localhost:8000/api/v1/profile \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "full_name": "Ramesh Kumar",
+    "state": "Uttar Pradesh",
+    "district": "Varanasi",
+    "preferred_language": "hi"
+  }'
+```
+
+### 6. Update Profile (Progressive)
 ```bash
 curl -X PUT http://localhost:8000/api/v1/profile \
   -H "Authorization: Bearer <token>" \
@@ -221,7 +234,7 @@ curl -X PUT http://localhost:8000/api/v1/profile \
   }'
 ```
 
-### 6. Record Consent (Grant)
+### 7. Record Consent (Grant)
 ```bash
 curl -X POST http://localhost:8000/api/v1/profile/consent \
   -H "Authorization: Bearer <token>" \
@@ -232,7 +245,7 @@ curl -X POST http://localhost:8000/api/v1/profile/consent \
   }'
 ```
 
-### 7. Revoke Consent
+### 8. Revoke Consent
 ```bash
 curl -X POST http://localhost:8000/api/v1/profile/consent/revoke \
   -H "Authorization: Bearer <token>" \
@@ -242,7 +255,7 @@ curl -X POST http://localhost:8000/api/v1/profile/consent/revoke \
   }'
 ```
 
-### 8. List Consent History
+### 9. List Consent History
 ```bash
 curl -X GET http://localhost:8000/api/v1/profile/consent \
   -H "Authorization: Bearer <token>"
