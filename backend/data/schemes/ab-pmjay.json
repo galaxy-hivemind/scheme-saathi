@@ -1,0 +1,135 @@
+{
+  "scheme_code": "AB-PMJAY",
+  "name": "Ayushman Bharat Pradhan Mantri Jan Arogya Yojana",
+  "short_title": "AB-PMJAY",
+  "description": "Government health assurance scheme providing health cover of Rs. 5 lakh per family per year for secondary and tertiary hospitalisation, including universal top-up coverage for all senior citizens aged 70 and above.",
+  "ministry": "Ministry of Health and Family Welfare",
+  "department": "National Health Authority",
+  "category": "health",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Deprived and vulnerable families as per SECC / NFSA criteria",
+    "All senior citizens aged 70 years and above irrespective of socio-economic status"
+  ],
+  "benefits": "Cashless health cover of up to Rs. 5 lakh per family per year across 1,949 treatment procedures at empanelled hospitals, with distinct Rs. 5 lakh top-up coverage for citizens aged 70+ via Ayushman Vaya Vandana Card.",
+  "official_url": "https://beneficiary.nha.gov.in/",
+  "application_url": "https://beneficiary.nha.gov.in/",
+  "source_url": "https://beneficiary.nha.gov.in/resources/guidelines",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the National Health Authority under the Ministry of Health and Family Welfare.",
+      "source_url": "https://beneficiary.nha.gov.in/resources/guidelines",
+      "source_type": "guideline",
+      "issuing_authority": "National Health Authority",
+      "publication_date": "2024-09-11",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 1.1, Governance Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored health assurance scheme implemented nationwide in partnership with States and UTs.",
+      "source_url": "https://beneficiary.nha.gov.in/resources/guidelines",
+      "source_type": "guideline",
+      "issuing_authority": "National Health Authority",
+      "publication_date": "2024-09-11",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 1.2, Scope of Health Assurance",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Targeted families identified under SECC/NFSA databases, and universally all senior citizens aged 70 years and above.",
+      "source_url": "https://beneficiary.nha.gov.in/resources/guidelines",
+      "source_type": "guideline",
+      "issuing_authority": "National Health Authority",
+      "publication_date": "2024-09-11",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2.1, Target Beneficiary Population",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Up to Rs. 5 lakh per family per year for secondary and tertiary care hospitalization, with additional distinct cover for senior citizens aged 70+.",
+      "source_url": "https://beneficiary.nha.gov.in/resources/guidelines",
+      "source_type": "guideline",
+      "issuing_authority": "National Health Authority",
+      "publication_date": "2024-09-11",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3.1, Benefit Package and Entitlements",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official beneficiary self-enrollment and e-KYC portal hosted on beneficiary.nha.gov.in.",
+      "source_url": "https://beneficiary.nha.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "National Health Authority",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Beneficiary Portal Homepage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Operational update confirms ongoing Ayushman Vaya Vandana rollout and 23.46 lakh authorized hospital admissions as of 20 October 2026.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2330009",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2026-10-29",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB Press Release PRID 2330009",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Captures both universal senior citizen entitlement (70+) and SECC 2011 deprivation criteria under PIB PRID 2330009.",
+    "any": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 70
+      },
+      {
+        "field": "is_secc_deprived_family",
+        "operator": "equals",
+        "value": true
+      }
+    ]
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar card of the beneficiary for electronic KYC verification.",
+      "is_mandatory": true,
+      "alternatives": [],
+      "issuing_authority": "UIDAI",
+      "guidance": "Biometric or OTP authentication at hospital Ayushman Mitra kiosk or beneficiary portal.",
+      "source_url": "https://beneficiary.nha.gov.in/resources/guidelines"
+    },
+    {
+      "document_type": "ration_card",
+      "title": "Ration Card or Family Identity Proof",
+      "description": "Valid state ration card or family register establishing family unit.",
+      "is_mandatory": false,
+      "alternatives": ["State Government Family Card"],
+      "issuing_authority": "Food and Civil Supplies Department",
+      "guidance": "Not required for individual senior citizens aged 70+ registering via Aadhaar.",
+      "source_url": "https://beneficiary.nha.gov.in/resources/guidelines"
+    }
+  ]
+}
+

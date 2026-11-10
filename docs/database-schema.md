@@ -4,7 +4,8 @@
 **ORM:** SQLAlchemy 2.0
 **Migrations:** Alembic
 **Primary keys:** UUID v4
-**Phase 1 Status:** Implemented & Migrated (Head Revision: `bb1bf3e30acc`)
+**Phase 1 Status:** Implemented & Migrated (Revision: `bb1bf3e30acc`)
+**Phase 2 Status:** Implemented & Migrated (Head Revision: `e7b2c419fa01`)
 
 ---
 
@@ -12,6 +13,7 @@
 
 1. **`d60b841ec91c`** — Initial schema creation (`users`, `user_profiles`, `user_consents`).
 2. **`bb1bf3e30acc`** — Alters `user_consents.user_id` foreign key from `CASCADE` to `RESTRICT` to enforce non-destructive consent audit retention.
+3. **`e7b2c419fa01`** — Schema creation for government scheme catalogue (`schemes`, `scheme_rule_versions`, `scheme_documents`), foreign keys with `ON DELETE RESTRICT`, check constraints, partial unique index for active rule versions, and PostgreSQL full-text search GIN index.
 
 ---
 
@@ -66,6 +68,14 @@ Every gateway operation:
 1. **`users`** — System user accounts and authentication state.
 2. **`user_profiles`** — Citizen demographics, location, occupation, and financial attributes.
 3. **`user_consents`** — Explicit immutable consent audit trail.
+
+---
+
+## Implemented in Phase 2
+
+1. **`schemes`** — Core government scheme metadata catalogue, full-text search index, source evidence manifest.
+2. **`scheme_rule_versions`** — Append-only, versioned eligibility rule definitions with historical retention.
+3. **`scheme_documents`** — Required documentation definitions with guidance and official sources per scheme.
 
 ---
 
@@ -134,60 +144,83 @@ Explicit immutable consent audit records — retained for regulatory compliance.
 ---
 
 ### `schemes`
-Central-government scheme catalogue.
+Central-government welfare scheme catalogue. Implemented in Phase 2 with strict domain check constraints, non-redundant indexes, and PostgreSQL full-text search.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | |
-| scheme_code | TEXT UNIQUE NOT NULL | Short code e.g. 'PM-KISAN' |
-| name | TEXT NOT NULL | Official scheme name |
-| description | TEXT | |
-| ministry | TEXT NOT NULL | Issuing ministry/department |
-| category | TEXT NOT NULL | e.g. agriculture, education, health |
-| benefits | TEXT | Description of benefits |
-| target_beneficiaries | TEXT | Who qualifies |
-| geographic_scope | TEXT | 'central' or state code |
-| official_url | TEXT NOT NULL | Official government page |
-| application_url | TEXT | Direct application URL |
-| source_url | TEXT NOT NULL | URL used as data source |
-| last_retrieved_at | TIMESTAMPTZ | When data was last fetched |
-| last_verified_at | TIMESTAMPTZ | When a team member verified |
-| scheme_status | TEXT | 'active' / 'inactive' / 'pending_verification' |
-| created_at | TIMESTAMPTZ | |
-| updated_at | TIMESTAMPTZ | |
+| id | UUID PK | `gen_random_uuid()` |
+| scheme_code | VARCHAR(64) UNIQUE NOT NULL | Short unique identifier, uppercase normalized (e.g. `PM-KISAN`) |
+| name | VARCHAR(255) NOT NULL | Official scheme name |
+| description | TEXT NOT NULL | Detailed description of the scheme |
+| ministry | VARCHAR(255) NOT NULL | Responsible government ministry or department |
+| category | VARCHAR(64) NOT NULL | One of 12 canonical categories (CHECK: `ck_schemes_category`) |
+| benefits | TEXT NOT NULL | Description of financial or material benefits |
+| target_beneficiaries | TEXT[] NOT NULL | Array of target beneficiary tags/identifiers |
+| geographic_scope | VARCHAR(32) NOT NULL DEFAULT 'central' | CHECK: `ck_schemes_geographic_scope` (`geographic_scope = 'central'`) |
+| official_url | TEXT NOT NULL | Official government portal URL |
+| application_url | TEXT | Direct citizen application/registration URL (optional) |
+| source_url | TEXT NOT NULL | Primary authoritative government source URL |
+| source_evidence | JSONB NOT NULL DEFAULT '[]' | Complete claim-level evidence manifest (`SourceEvidenceEntry[]`) |
+| last_retrieved_at | TIMESTAMPTZ NOT NULL | Timestamp when data was retrieved from government source |
+| last_verified_at | TIMESTAMPTZ | Timestamp of human/editorial verification (required for `active`, NULL for `pending_verification`) |
+| scheme_status | VARCHAR(32) NOT NULL DEFAULT 'pending_verification' | CHECK: `ck_schemes_status` (`'active'`, `'inactive'`, `'pending_verification'`) |
+| created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | Record creation timestamp |
+| updated_at | TIMESTAMPTZ NOT NULL DEFAULT now() | Record update timestamp |
+
+**Constraints & Indexes:**
+- Unique Constraint: `uq_schemes_scheme_code` on `scheme_code`
+- Check Constraint: `ck_schemes_category` restricting `category` to the 12 canonical values (`agriculture`, `education`, `health`, `housing`, `employment`, `women_welfare`, `children_welfare`, `senior_citizens`, `disability`, `financial_inclusion`, `social_security`, `skill_development`)
+- Check Constraint: `ck_schemes_geographic_scope` (`geographic_scope = 'central'`)
+- Check Constraint: `ck_schemes_status` (`scheme_status IN ('active', 'inactive', 'pending_verification')`)
+- Composite Index: `idx_schemes_status_category` on `(scheme_status, category)`
+- Index: `idx_schemes_name` on `name`
+- PostgreSQL FTS GIN Index: `idx_schemes_fts` using `gin((to_tsvector('english', coalesce(name, '') || ' ' || coalesce(description, '') || ' ' || coalesce(ministry, '') || ' ' || coalesce(benefits, '')) || array_to_tsvector(target_beneficiaries)))`
 
 ---
 
 ### `scheme_rule_versions`
-Versioned eligibility rules (JSONB). Never mutated; new version inserted for each change.
+Append-only eligibility rule versions (JSONB). In Phase 2, historical rule versions are immutable at the application layer; the only controlled lifecycle update closes `effective_to` when a newer version is activated.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | |
-| scheme_id | UUID FK → schemes.id | |
-| version | INTEGER NOT NULL | Increments per scheme |
-| rules | JSONB NOT NULL | Rule tree (see eligibility spec) |
-| source_url | TEXT | Official source for these rules |
-| effective_from | TIMESTAMPTZ | When this version became active |
-| effective_to | TIMESTAMPTZ | NULL = still active |
-| created_at | TIMESTAMPTZ | |
+| id | UUID PK | `gen_random_uuid()` |
+| scheme_id | UUID NOT NULL | Foreign key to `schemes.id` (`ON DELETE RESTRICT`) |
+| version | INTEGER NOT NULL | Sequential version number per scheme (CHECK: `version >= 1`) |
+| rules | JSONB NOT NULL | Evaluator-ready rule AST (combinators and field predicates) |
+| source_url | TEXT | Official source establishing this rule version |
+| is_active | BOOLEAN NOT NULL DEFAULT true | Whether this rule version is currently active |
+| effective_from | TIMESTAMPTZ NOT NULL DEFAULT now() | Activation timestamp |
+| effective_to | TIMESTAMPTZ | Expiration timestamp (NULL while active) |
+| created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | Record creation timestamp |
 
-**Unique constraint:** `(scheme_id, version)`
+**Constraints & Indexes:**
+- Foreign Key: `fk_scheme_rule_versions_scheme_id` referencing `schemes(id)` with `ON DELETE RESTRICT`
+- Unique Constraint: `uq_scheme_rule_versions_scheme_version` on `(scheme_id, version)`
+- Check Constraint: `ck_scheme_rule_versions_version_positive` (`version >= 1`)
+- Partial Unique Index: `uq_scheme_rule_versions_active` on `(scheme_id)` `WHERE is_active = TRUE` (enforces at most one active rule version per scheme, allowing zero active versions if none are active, and permitting multiple inactive historical versions)
 
 ---
 
 ### `scheme_documents`
-Documents required per scheme.
+Required citizen documents per scheme. Document definitions are soft-deactivated (`is_active = FALSE`) rather than deleted when omitted during seed synchronization.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | |
-| scheme_id | UUID FK → schemes.id | |
-| document_type | TEXT NOT NULL | e.g. 'aadhaar', 'income_certificate' |
-| is_mandatory | BOOLEAN NOT NULL DEFAULT true | |
-| guidance | TEXT | How to obtain the document |
-| source_url | TEXT | Verification source |
-| last_verified_at | TIMESTAMPTZ | |
+| id | UUID PK | `gen_random_uuid()` |
+| scheme_id | UUID NOT NULL | Foreign key to `schemes.id` (`ON DELETE RESTRICT`) |
+| document_type | VARCHAR(64) NOT NULL | Canonical document identifier (e.g. `aadhaar`, `bank_passbook`, `land_records`) |
+| is_mandatory | BOOLEAN NOT NULL DEFAULT true | Whether the document is strictly required |
+| guidance | TEXT | Practical procurement instructions for citizens |
+| source_url | TEXT | Official guidelines or portal source URL |
+| last_verified_at | TIMESTAMPTZ | Verification timestamp |
+| is_active | BOOLEAN NOT NULL DEFAULT true | Soft-deactivation status flag |
+| created_at | TIMESTAMPTZ NOT NULL DEFAULT now() | Record creation timestamp |
+| updated_at | TIMESTAMPTZ NOT NULL DEFAULT now() | Record update timestamp |
+
+**Constraints & Indexes:**
+- Foreign Key: `fk_scheme_documents_scheme_id` referencing `schemes(id)` with `ON DELETE RESTRICT`
+- Unique Constraint: `uq_scheme_documents_scheme_doc_type` on `(scheme_id, document_type)`
+- Check Constraint: `ck_scheme_documents_type_nonempty` (`char_length(trim(document_type)) > 0`)
 
 ---
 

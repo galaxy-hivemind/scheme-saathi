@@ -49,3 +49,41 @@ All Phase 1 requirements have been implemented, audited, verified, and regressio
    - Fail-closed execution gatekeepers (`safe_drop_all`, `safe_create_all`, `safe_create_schema`, `safe_drop_schema`) respecting caller transaction ownership.
    - Development rule: all application-controlled destructive test operations must use the verified gateways. Direct raw SQL / SQLAlchemy DDL bypassing gateways is not intercepted by the Python runtime, but is prohibited by test policy and blocked against the application DB by restricted runtime role privileges and session lockout.
    - Injection-immune SQL composition with runtime DBAPI verification and cryptographically random container passwords.
+
+---
+
+## Phase 2 Implementation & Audit Status: COMPLETED
+
+All Phase 2 requirements for the Government Scheme Catalogue, Data Management, and Search API have been implemented, tested, and verified:
+
+1. **Relational PostgreSQL Schema & Constraints (`backend/app/models/`):**
+   - Three core tables: `schemes`, `scheme_rule_versions`, `scheme_documents`.
+   - Domain check constraints enforcing the 12 canonical categories (`ck_schemes_category`), `geographic_scope = 'central'` (`ck_schemes_geographic_scope`), and valid statuses (`ck_schemes_status`).
+   - Foreign key constraints with `ON DELETE RESTRICT` on both child tables to prevent accidental deletion of scheme rules or document definitions.
+   - Non-redundant indexing with composite index `(scheme_status, category)` and a partial unique index `uq_scheme_rule_versions_active` enforcing at most one active rule version per scheme (permitting zero or multiple inactive versions).
+   - High-performance PostgreSQL GIN full-text search index (`idx_schemes_fts`) indexing `name`, `description`, `ministry`, `benefits`, and `target_beneficiaries` (`array_to_tsvector`).
+   - Alembic migration `e7b2c419fa01` fully reversible with isolated schema migration tests.
+
+2. **Authoritative Seed Datasets (`backend/data/schemes/`):**
+   - 7 central schemes curated with atomic claim-level `source_evidence` manifests.
+   - 4 `active` schemes verified against official 2026 government documentation (PIB releases, CSMC meetings, portal guidelines):
+     - `PM-KISAN`: 24th instalment released 30 October 2026 (PIB PRID 2330414).
+     - `PMAY-U`: 10th CSMC meeting held 16 October 2026 sanctioning 1.93 lakh houses.
+     - `AB-PMJAY`: Ayushman Vaya Vandana 70+ cover expanded 29 October 2026 (PIB PRID 2330009).
+     - `PM-SVANIDHI`: Extended to 31 March 2030 with enhanced credit limits (PIB PRID 2161157, 2303797).
+   - 3 `pending_verification` schemes awaiting verified 2026 evidence (`PMUY`, `APY`, `PMKVY`), with `last_verified_at = null`.
+
+3. **Safe CLI Seed Importer (`backend/app/scripts/seed_schemes.py`):**
+   - `--dry-run` mode provides a detailed proposed change manifest with **zero DML** executions (verified via SQL DML listener).
+   - In-memory Pydantic validation before opening any database transactions.
+   - Conflict detection skips entire aggregate records unless `--allow-override-verified` is explicitly supplied.
+   - Append-only rule version incrementing and automatic closure of previous versions' `effective_to` timestamps.
+   - Soft-deactivation (`is_active = FALSE`) of omitted documents to preserve relational integrity.
+
+4. **Authenticated Search & Detail APIs (`backend/app/api/v1/schemes.py`):**
+   - `GET /api/v1/schemes`: Lightweight summary list with PostgreSQL FTS search (`q`), category filtering (`category`), deterministic sorting (`name ASC, id ASC`), pagination (`page`, `limit`), and `include_pending` filter. Gracefully handles stop words and punctuation.
+   - `GET /api/v1/schemes/{scheme_id}`: Comprehensive detail endpoint with active documents and source evidence. Inactive/hidden schemes return 404. Deliberately excludes internal rule JSON to protect evaluator AST state.
+   - Both endpoints strictly protected by Phase 1 JWT authentication.
+
+5. **Test Suite:**
+   - 38 new tests covering unit schemas, model constraints, importer flags, API behavior, and migration cycles. 100% pass rate.

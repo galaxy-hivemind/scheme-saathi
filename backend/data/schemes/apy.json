@@ -1,0 +1,140 @@
+{
+  "scheme_code": "APY",
+  "name": "Atal Pension Yojana",
+  "short_title": "APY",
+  "description": "Government-backed periodic pension scheme targeted at workers in the unorganised sector, delivering guaranteed monthly pensions of Rs. 1,000 to Rs. 5,000 starting from 60 years of age.",
+  "ministry": "Ministry of Finance",
+  "department": "Department of Financial Services",
+  "category": "social_security",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Indian citizens aged 18 to 40 years working in unorganised sectors",
+    "Individuals who are not income tax payers"
+  ],
+  "benefits": "Guaranteed minimum monthly pension of Rs. 1,000, Rs. 2,000, Rs. 3,000, Rs. 4,000, or Rs. 5,000 to the subscriber upon reaching 60 years of age, continuing to spouse upon subscriber demise and corpus returned to nominee.",
+  "official_url": "https://www.pfrda.org.in/",
+  "application_url": "https://enps.nsdl.com/eNPS/ApySubRegistration.html",
+  "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621",
+  "scheme_status": "pending_verification",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": null,
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Pension Fund Regulatory and Development Authority under the Ministry of Finance.",
+      "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621",
+      "source_type": "guideline",
+      "issuing_authority": "Pension Fund Regulatory and Development Authority",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Master Circular PFRDA/2023/16/PD-01, Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central social security pension program available to bank account holders across India.",
+      "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621",
+      "source_type": "guideline",
+      "issuing_authority": "Pension Fund Regulatory and Development Authority",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Master Circular Section 2, Eligibility Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Indian citizens aged 18 to 40 years holding a savings bank or post office account, who are not income tax assessees.",
+      "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621",
+      "source_type": "guideline",
+      "issuing_authority": "Pension Fund Regulatory and Development Authority",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Master Circular Section 3, Subscriber Qualifications",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Defined monthly pension of Rs. 1,000 to Rs. 5,000 based on contribution age and chosen pension slab.",
+      "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621",
+      "source_type": "guideline",
+      "issuing_authority": "Pension Fund Regulatory and Development Authority",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Master Circular Section 4, Pension Slabs and Guarantee",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official PFRDA portal and eNPS online enrollment portal.",
+      "source_url": "https://www.pfrda.org.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Pension Fund Regulatory and Development Authority",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PFRDA Official Portal Homepage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Gazette notification dated 18 August 2025 inserted Paragraph 14 specifying that PFRDA will establish exit modalities in consultation with the Government; November 2026 operational enrollment data lacks current corroboration.",
+      "source_url": "https://egazette.gov.in/WriteReadData/2025/265739.pdf",
+      "source_type": "gazette",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2025-08-18",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Gazette Notification Doc ID 265739, Paragraph 14",
+      "verification_status": "unverified",
+      "verified_at": null
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": false,
+    "is_provisional": true,
+    "limitations": "Provisional criteria; entry age and non-taxpayer criteria verified under PFRDA master circular, but 2026 exit modalities and penalty rules pending operational verification.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 40
+      },
+      {
+        "field": "is_income_tax_payer",
+        "operator": "equals",
+        "value": false
+      }
+    ]
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar card for KYC verification and subscriber identity authentication.",
+      "is_mandatory": true,
+      "alternatives": [],
+      "issuing_authority": "UIDAI",
+      "guidance": "Aadhaar must be linked to active bank savings account.",
+      "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621"
+    },
+    {
+      "document_type": "bank_account",
+      "title": "Savings Bank Account Details",
+      "description": "Active savings account with auto-debit facility for monthly contribution deduction.",
+      "is_mandatory": true,
+      "alternatives": ["Post Office Savings Bank Account"],
+      "issuing_authority": "Scheduled Bank / Department of Posts",
+      "guidance": "Ensure sufficient monthly balance to prevent contribution default charges.",
+      "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621"
+    }
+  ]
+}
+

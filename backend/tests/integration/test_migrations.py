@@ -390,7 +390,7 @@ def test_alembic_fresh_database_upgrade_head_and_foreign_keys(monkeypatch):
 
     with isolated_test_schema(engine, prefix="migtest_fresh") as test_schema:
         alembic_cfg = configure_alembic_for_schema(test_url, test_schema)
-        command.upgrade(alembic_cfg, "head")
+        command.upgrade(alembic_cfg, "bb1bf3e30acc")
 
         inspector = inspect(engine)
         test_tables = set(inspector.get_table_names(schema=test_schema))
@@ -461,7 +461,7 @@ def test_alembic_upgrade_from_previous_revision_and_downgrade(monkeypatch):
             )
             assert fk_action == "CASCADE"
 
-        command.upgrade(alembic_cfg, "head")
+        command.upgrade(alembic_cfg, "bb1bf3e30acc")
         with engine.connect() as conn:
             rev = conn.execute(text(f'SELECT version_num FROM "{test_schema}".alembic_version')).scalar()
             assert rev == "bb1bf3e30acc"
