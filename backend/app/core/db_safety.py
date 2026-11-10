@@ -411,6 +411,10 @@ def setup_test_roles(
         conn.execute(text(f'REVOKE ALL ON DATABASE "{app_db}" FROM "{validated_role}";'))
         conn.execute(text(f'REVOKE CONNECT ON DATABASE "{app_db}" FROM "{validated_role}";'))
         conn.execute(text(f"ALTER ROLE \"{validated_role}\" IN DATABASE \"{app_db}\" SET session_preload_libraries = 'nonexistent_lib';"))
+        try:
+            conn.execute(text("REVOKE EXECUTE ON FUNCTION pg_control_system() FROM PUBLIC;"))
+        except Exception:
+            pass
 
         # 5. Verify that the session_preload_libraries setting was actually applied
         setting_applied = conn.execute(

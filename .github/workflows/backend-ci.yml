@@ -68,6 +68,7 @@ jobs:
         run: |
           python -m app.core.db_safety setup-roles --admin-url "$ADMIN_DATABASE_URL" --test-password "$TEST_DB_PASSWORD"
           export PGPASSWORD=postgres
+          psql -h localhost -U postgres -c "REVOKE EXECUTE ON FUNCTION pg_control_system() FROM PUBLIC;"
           psql -h localhost -U postgres -d scheme_saathi_test -c "GRANT ALL ON SCHEMA public TO scheme_saathi_test_user;"
           psql -h localhost -U postgres -d scheme_saathi_migration_test -c "GRANT ALL ON SCHEMA public TO scheme_saathi_test_user;"
           python -m app.core.db_safety provision --purpose regular_test --target-url "postgresql://postgres:postgres@localhost:5432/scheme_saathi_test" --app-url "$DATABASE_URL"
