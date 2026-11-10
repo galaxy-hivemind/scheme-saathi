@@ -45,11 +45,13 @@ Regardless of environment variables, the system verifies that the target does no
 - Unit tests run completely free of database fixtures and opt-in requirements (`pytest tests/unit/`).
 
 ### 5. Centralized Destructive Execution Gateways & Live Catalog Revalidation
-Destructive DDL calls cannot be called directly; they must route through verified gatekeeper functions:
+Under project test conventions, all application-controlled destructive test DDL must route through verified gatekeeper functions:
 - `safe_drop_all(engine_or_conn, metadata, target_url, app_url, purpose, expected_role)`
 - `safe_create_all(engine_or_conn, metadata, target_url, app_url, purpose, expected_role)`
 - `safe_create_schema(engine_or_conn, schema_name, target_url, app_url, purpose, expected_role)`
 - `safe_drop_schema(engine_or_conn, schema_name, target_url, app_url, purpose, expected_role)` (strictly forbids dropping `public`, `pg_catalog`, or `information_schema`)
+
+> **Gateway Enforcement Scope:** The gateway functions verify target database identity, sentinel presence, opt-in authorization, role attributes, and transaction boundaries immediately before executing DDL. Direct raw SQL statements or unmanaged SQLAlchemy calls (such as `metadata.drop_all(bind=engine)`) that bypass these functions are not intercepted by the Python runtime; however, project conventions strictly mandate using the gateways, and PostgreSQL-level runtime role restrictions prevent destructive operations on the application database.
 
 Every gateway operation:
 1. Validates `expected_role` against the authoritative configured test runtime role (`TEST_DB_USER` or `scheme_saathi_test_user`), rejecting missing, `None`, empty, or unapproved roles before DDL.

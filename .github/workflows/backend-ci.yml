@@ -142,10 +142,4 @@ jobs:
           DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
         run: |
-          # Without ALLOW_TEST_DB_RESET, test_database.py must fail with PermissionError during session fixture setup
-          if pytest tests/integration/test_database.py; then
-            echo "Security violation: tests ran destructively without explicit opt-in!"
-            exit 1
-          else
-            echo "Pass: Tests failed closed as expected when opt-in was omitted."
-          fi
+          pytest tests/integration/test_negative_authorization.py -v

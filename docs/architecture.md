@@ -128,6 +128,7 @@ Citizen message
 | LLM guardrails | Tool inputs validated before execution |
 | Submission safety | Explicit confirmation record required |
 | Data minimization | Collect only fields needed for active schemes |
+| Test Database Safety | Verified DDL gateways (`safe_drop_all`, etc.) with fail-closed live catalog verification. Development rule mandates all test destructive operations route through gateways. Direct raw SQL/DDL bypassing gateways is prohibited by test policy and restricted by database-level role permissions and session lockout. |
 
 ---
 

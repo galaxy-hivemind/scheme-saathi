@@ -47,4 +47,5 @@ All Phase 1 requirements have been implemented, audited, verified, and regressio
    - Dual-isolation architecture: ephemeral Testcontainers (preferred) and privilege-restricted dedicated fallback databases.
    - Mandatory live connection catalog revalidation (`pg_roles`, `pg_auth_members`) immediately before DDL.
    - Fail-closed execution gatekeepers (`safe_drop_all`, `safe_create_all`, `safe_create_schema`, `safe_drop_schema`) respecting caller transaction ownership.
+   - Development rule: all application-controlled destructive test operations must use the verified gateways. Direct raw SQL / SQLAlchemy DDL bypassing gateways is not intercepted by the Python runtime, but is prohibited by test policy and blocked against the application DB by restricted runtime role privileges and session lockout.
    - Injection-immune SQL composition with runtime DBAPI verification and cryptographically random container passwords.
