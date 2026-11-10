@@ -165,11 +165,17 @@ def op_not_in(actual: Any, expected: Any) -> bool:
 
 def op_exists(actual: Any, expected: Any) -> bool:
     """
-    Check whether field exists / is non-null.
+    Check whether field exists / is non-null and non-empty.
+    Treats None, empty strings, and whitespace-only strings as nonexistent.
     Expected argument must be a genuine boolean or explicitly supported boolean string.
     """
     expected_bool = parse_strict_bool(expected)
-    actual_exists = actual is not None
+    if actual is None:
+        actual_exists = False
+    elif isinstance(actual, str) and not actual.strip():
+        actual_exists = False
+    else:
+        actual_exists = True
     return actual_exists is expected_bool
 
 

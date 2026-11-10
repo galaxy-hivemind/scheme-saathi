@@ -237,6 +237,12 @@ def evaluate_condition_node(
     if operator == "exists":
         passed = evaluate_operator("exists", actual if is_present else None, expected)
         status = TriStateStatus.PASS if passed else TriStateStatus.FAIL
+        actual_exists = (
+            actual is not None
+            and not (isinstance(actual, str) and not actual.strip())
+            if is_present
+            else False
+        )
         return ConditionResult(
             field=field,
             operator=operator,
@@ -244,7 +250,7 @@ def evaluate_condition_node(
             actual_value=actual,
             status=status,
             passed=passed,
-            explanation=f"Requirement {'satisfied' if passed else 'not satisfied'}: {field} existence is {actual is not None} (expected {expected}).",
+            explanation=f"Requirement {'satisfied' if passed else 'not satisfied'}: {field} existence is {actual_exists} (expected {expected}).",
         )
 
     # If field is missing from citizen profile -> UNKNOWN
@@ -450,14 +456,20 @@ def evaluate_scheme_eligibility(
             for e in scheme.source_evidence
         )
     )
-    ast_claims_authoritative = bool(criteria.get("is_authoritative", False))
-    # An unverified or pending scheme cannot be elevated to authoritative by its AST
+    raw_authoritative = criteria.get("is_authoritative")
+    ast_claims_authoritative = raw_authoritative if type(raw_authoritative) is bool else False
+    # An unverified or pending scheme cannot be elevated to authoritative by its AST, nor can malformed metadata elevate authority
     is_authoritative = scheme_is_verified and ast_claims_authoritative
-    is_provisional = not is_authoritative or bool(criteria.get("is_provisional", False))
+
+    raw_provisional = criteria.get("is_provisional")
+    ast_is_provisional = raw_provisional if type(raw_provisional) is bool else False
+    is_provisional = not is_authoritative or ast_is_provisional
 
     # 3. Criteria Completeness (Blocker B)
-    # Default to incomplete (False) if missing from metadata
-    criteria_complete = bool(criteria.get("criteria_complete", False))
+    # Validate criteria_complete using a genuine boolean check (type(value) is bool).
+    # Missing or malformed values must default to False. Never use bool() to interpret metadata strings.
+    raw_criteria_complete = criteria.get("criteria_complete")
+    criteria_complete = raw_criteria_complete if type(raw_criteria_complete) is bool else False
     limitations = criteria.get("limitations")
 
     # 4. Evaluate AST

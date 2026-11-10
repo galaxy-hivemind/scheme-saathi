@@ -104,15 +104,59 @@ def test_strict_boolean_operator_validation():
 
 
 def test_strict_exists_operator():
-    """Verify op_exists validates expected argument as a strict boolean."""
-    assert evaluate_operator("exists", "valid_data", True) is True
-    assert evaluate_operator("exists", "valid_data", "true") is True
-    assert evaluate_operator("exists", None, "false") is True
-    assert evaluate_operator("exists", None, "0") is True
-    assert evaluate_operator("exists", None, True) is False
+    """
+    Verify op_exists treats None, empty strings, and whitespace-only strings as nonexistent,
+    while preserving strict validation of the expected boolean.
+    """
+    # 1. Nonexistent values: None, empty string, whitespace-only string
+    for nonexistent_val in [None, "", "   ", "\t\r\n  ", " \n "]:
+        assert evaluate_operator("exists", nonexistent_val, True) is False
+        assert evaluate_operator("exists", nonexistent_val, False) is True
+        assert evaluate_operator("exists", nonexistent_val, "true") is False
+        assert evaluate_operator("exists", nonexistent_val, "false") is True
+        assert evaluate_operator("exists", nonexistent_val, "1") is False
+        assert evaluate_operator("exists", nonexistent_val, "0") is True
 
+    # 2. Existent values: non-empty strings, numbers (including 0), booleans (including False)
+    for existent_val in ["valid_data", " a ", 0, 100, False, True, ["item"]]:
+        assert evaluate_operator("exists", existent_val, True) is True
+        assert evaluate_operator("exists", existent_val, False) is False
+        assert evaluate_operator("exists", existent_val, "true") is True
+        assert evaluate_operator("exists", existent_val, "false") is False
+
+    # 3. Strict validation of expected boolean
     with pytest.raises(ValueError, match="Invalid boolean string value: 'not-a-bool'"):
         evaluate_operator("exists", "data", "not-a-bool")
+
+    with pytest.raises(ValueError, match="Invalid boolean string value: 'not-a-bool'"):
+        evaluate_operator("exists", "", "not-a-bool")
+
+    with pytest.raises(ValueError, match="Cannot interpret value of type 'int' as a boolean"):
+        evaluate_operator("exists", "data", 1)
+
+    with pytest.raises(ValueError, match="Cannot interpret value of type 'int' as a boolean"):
+        evaluate_operator("exists", "", 0)
+
+    # 4. Leaf condition node evaluation with whitespace/empty string
+    empty_cond_true = {"field": "vending_cert", "operator": "exists", "value": True}
+    res_empty_true = evaluate_condition_node(
+        empty_cond_true,
+        None,
+        override_data={"vending_cert": "   "},
+    )
+    assert res_empty_true.status == TriStateStatus.FAIL
+    assert res_empty_true.passed is False
+    assert "existence is False" in res_empty_true.explanation
+
+    empty_cond_false = {"field": "vending_cert", "operator": "exists", "value": False}
+    res_empty_false = evaluate_condition_node(
+        empty_cond_false,
+        None,
+        override_data={"vending_cert": ""},
+    )
+    assert res_empty_false.status == TriStateStatus.PASS
+    assert res_empty_false.passed is True
+    assert "existence is False" in res_empty_false.explanation
 
 
 def test_operator_comparisons_and_boundaries():
@@ -447,8 +491,8 @@ def _create_mock_scheme(
     scheme_code: str,
     name: str,
     criteria: dict,
-    is_authoritative: bool = True,
-    is_provisional: bool = False,
+    is_authoritative: Optional[bool] = None,
+    is_provisional: Optional[bool] = None,
     scheme_status: str = "active",
     effective_from: Optional[date] = None,
     effective_to: Optional[date] = None,
@@ -485,8 +529,15 @@ def _create_mock_scheme(
         source_evidence=evidence,
     )
     criteria_copy = dict(criteria)
-    criteria_copy["is_authoritative"] = is_authoritative
-    criteria_copy["is_provisional"] = is_provisional
+    if is_authoritative is not None:
+        criteria_copy["is_authoritative"] = is_authoritative
+    elif "is_authoritative" not in criteria_copy:
+        criteria_copy["is_authoritative"] = True
+
+    if is_provisional is not None:
+        criteria_copy["is_provisional"] = is_provisional
+    elif "is_provisional" not in criteria_copy:
+        criteria_copy["is_provisional"] = False
 
     rule_ver = SchemeRuleVersion(
         id=uuid.uuid4(),
@@ -651,6 +702,83 @@ def test_blocker_c_pending_scheme_cannot_become_authoritative():
     # Authority cannot be elevated by AST
     assert res.is_authoritative is False
     assert res.is_provisional is True
+
+
+def test_metadata_strict_boolean_type_safety():
+    """
+    Verify criteria_complete and is_authoritative are validated strictly using type(v) is bool.
+    - String "false" as metadata must evaluate to False (never True via bool()).
+    - Malformed metadata ("true", 1, 0, None, lists, dicts) must default to False.
+    - Malformed is_authoritative must never elevate authority.
+    """
+    profile = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), date_of_birth=date(1995, 1, 1))
+
+    # 1. "false" string as criteria_complete metadata
+    criteria_false_str = {
+        "is_authoritative": True,
+        "is_provisional": False,
+        "criteria_complete": "false",  # String "false"
+        "all": [{"field": "age", "operator": "greater_than_or_equal", "value": 18}],
+    }
+    scheme = _create_mock_scheme("SCHEME-1", "Scheme 1", criteria_false_str, scheme_status="active")
+
+    res = evaluate_scheme_eligibility(scheme, profile)
+    # Must strictly be False, NOT True via bool("false")
+    assert res.criteria_complete is False
+    assert res.overall_status == TriStateStatus.UNKNOWN
+    assert res.result == EligibilityResultStatus.POTENTIALLY_ELIGIBLE
+    assert res.eligible is None
+
+    # 2. Malformed criteria_complete values must all default to False
+    malformed_criteria_complete_values = ["true", "True", "1", 1, 0, None, ["true"], {"complete": True}]
+    for bad_val in malformed_criteria_complete_values:
+        crit = {
+            "is_authoritative": True,
+            "is_provisional": False,
+            "criteria_complete": bad_val,
+            "all": [{"field": "age", "operator": "greater_than_or_equal", "value": 18}],
+        }
+        sch = _create_mock_scheme("SCHEME-BAD", "Scheme Bad", crit, scheme_status="active")
+        r = evaluate_scheme_eligibility(sch, profile)
+        assert r.criteria_complete is False, f"Expected False for {bad_val!r}, got {r.criteria_complete}"
+        assert r.eligible is None
+
+    # 3. "false" string as is_authoritative metadata
+    criteria_auth_false_str = {
+        "is_authoritative": "false",  # String "false"
+        "is_provisional": False,
+        "criteria_complete": True,
+        "all": [{"field": "age", "operator": "greater_than_or_equal", "value": 18}],
+    }
+    sch_auth = _create_mock_scheme("SCHEME-AUTH", "Scheme Auth", criteria_auth_false_str, scheme_status="active")
+    r_auth = evaluate_scheme_eligibility(sch_auth, profile)
+    assert r_auth.is_authoritative is False
+
+    # 4. Malformed is_authoritative values must never elevate authority
+    malformed_auth_values = ["true", "True", "1", "yes", 1, 0, None, ["true"], {"auth": True}]
+    for bad_auth in malformed_auth_values:
+        crit = {
+            "is_authoritative": bad_auth,
+            "is_provisional": False,
+            "criteria_complete": True,
+            "all": [{"field": "age", "operator": "greater_than_or_equal", "value": 18}],
+        }
+        sch_bad_auth = _create_mock_scheme("SCHEME-BAD-AUTH", "Scheme Bad Auth", crit, scheme_status="active")
+        r_bad_auth = evaluate_scheme_eligibility(sch_bad_auth, profile)
+        assert r_bad_auth.is_authoritative is False, f"Expected False for bad is_authoritative {bad_auth!r}, got {r_bad_auth.is_authoritative}"
+
+    # 5. Genuine booleans work as expected
+    crit_valid = {
+        "is_authoritative": True,
+        "is_provisional": False,
+        "criteria_complete": True,
+        "all": [{"field": "age", "operator": "greater_than_or_equal", "value": 18}],
+    }
+    sch_valid = _create_mock_scheme("SCHEME-VALID", "Scheme Valid", crit_valid, scheme_status="active")
+    r_valid = evaluate_scheme_eligibility(sch_valid, profile)
+    assert r_valid.is_authoritative is True
+    assert r_valid.criteria_complete is True
+    assert r_valid.eligible is True
 
 
 def test_rule_version_effective_dates_filtering():
