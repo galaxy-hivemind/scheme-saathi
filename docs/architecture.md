@@ -148,12 +148,17 @@ Citizen message
 
 ---
 
-## 6. Source integrity
+## 6. Source integrity & Verification Architecture
 
-Every scheme record stores:
-- `source_url` — the official government page used as source
-- `last_retrieved_at` — when the data was fetched
-- `last_verified_at` — when a team member verified accuracy
-- `scheme_status` — `active | inactive | pending_verification`
+In Phase 2, source integrity is enforced at both data model and ingestion layers:
+- `source_url` — authoritative primary government portal or notification URL.
+- `source_evidence` — JSONB array of atomic `SourceEvidenceEntry` records substantiating 6 material claims (`scheme_existence`, `operational_status`, `benefit_structure`, `eligibility_criteria`, `documentation_requirements`, `application_channel`).
+- `last_retrieved_at` — UTC timestamp of official document retrieval.
+- `last_verified_at` — UTC timestamp of editorial/factual verification (mandatory for `active`, null for `pending_verification`).
+- `scheme_status` — `active | inactive | pending_verification`.
 
-The system will not present scheme data with `scheme_status = inactive` or missing verification dates as confirmed current information.
+The system guarantees:
+1. Schemes lacking complete 2026 verification evidence remain `pending_verification` and are hidden from citizen searches by default (`GET /api/v1/schemes`).
+2. The seed importer refuses to overwrite verified schemes without explicit override authorization (`--allow-override-verified`).
+3. Eligibility rule definitions are append-only; updates close the prior version and insert a new version incremented by 1.
+4. Fast discovery uses PostgreSQL Full-Text Search (GIN index over text vectors and beneficiary array vectors) with fallback handling for stop words and punctuation.

@@ -1,0 +1,131 @@
+{
+  "scheme_code": "PMKVY",
+  "name": "Pradhan Mantri Kaushal Vikas Yojana",
+  "short_title": "PMKVY 4.0",
+  "description": "Skill certification initiative of the Ministry of Skill Development and Entrepreneurship to enable Indian youth to undergo industry-aligned vocational training.",
+  "ministry": "Ministry of Skill Development and Entrepreneurship",
+  "department": "Skill Development Division",
+  "category": "skill_development",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Unemployed youth seeking marketable vocational skills",
+    "School and college dropouts aged between 15 and 45 years"
+  ],
+  "benefits": "Free of cost short-term skill training (STT) and Recognition of Prior Learning (RPL), with government-funded assessment fees, government certification, and placement assistance.",
+  "official_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+  "application_url": "https://www.skillindiadigital.gov.in/",
+  "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+  "scheme_status": "pending_verification",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": null,
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Skill Development and Entrepreneurship (MSDE).",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Skill Development and Entrepreneurship",
+      "publication_date": "2023-11-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMKVY Framework Document Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central skill development program executed across training centers nationwide.",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Skill Development and Entrepreneurship",
+      "publication_date": "2023-11-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMKVY Framework Document Section 1.2",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Indian nationals aged 15-45 with basic education seeking marketable job skill certification.",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Skill Development and Entrepreneurship",
+      "publication_date": "2023-11-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMKVY Framework Document Section 2",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Complete waiver of training and assessment fees with national certification upon course completion.",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Skill Development and Entrepreneurship",
+      "publication_date": "2023-11-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMKVY Framework Document Section 3",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official scheme portal on msde.gov.in and candidate registration on Skill India Digital Hub.",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Skill Development and Entrepreneurship",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "MSDE Portal Webpage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "PMKVY 4.0 lifecycle operations are undergoing restructuring under Skill India Digital Hub; active batch allocation guidelines are pending publication.",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy",
+      "source_type": "circular",
+      "issuing_authority": "Ministry of Skill Development and Entrepreneurship",
+      "publication_date": "2023-11-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "MSDE SIDH Transition Advisory Note",
+      "verification_status": "unverified",
+      "verified_at": null
+    }
+  ],
+  "eligibility_criteria": {
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 15
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 45
+      }
+    ]
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar card for trainee identity and attendance tracking via AEBAS.",
+      "is_mandatory": true,
+      "alternatives": [],
+      "issuing_authority": "UIDAI",
+      "guidance": "Aadhaar is mandatory for enrollment in Skill India Digital Hub courses.",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy"
+    },
+    {
+      "document_type": "educational_certificate",
+      "title": "Educational Qualification Certificate or Marksheet",
+      "description": "Proof of highest education attained (10th/12th or school leaving certificate).",
+      "is_mandatory": false,
+      "alternatives": ["School Leaving Certificate", "Self-declaration of basic literacy for RPL"],
+      "issuing_authority": "Recognized Educational Board or School",
+      "guidance": "Required for specialized technical short-term courses with minimum entry qualifications.",
+      "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy"
+    }
+  ]
+}

@@ -261,19 +261,61 @@ curl -X GET http://localhost:8000/api/v1/profile/consent \
   -H "Authorization: Bearer <token>"
 ```
 
+## Scheme Catalogue Endpoints (Phase 2)
+
+All scheme catalogue endpoints require authentication via JWT Bearer token.
+
+### 1. List / Search Schemes
+```bash
+# Basic list (active schemes only, page 1)
+curl -X GET "http://localhost:8000/api/v1/schemes?page=1&limit=20" \
+  -H "Authorization: Bearer <token>"
+
+# Search with query string and category filter
+curl -X GET "http://localhost:8000/api/v1/schemes?q=farmer&category=agriculture" \
+  -H "Authorization: Bearer <token>"
+
+# Include pending verification schemes
+curl -X GET "http://localhost:8000/api/v1/schemes?include_pending=true" \
+  -H "Authorization: Bearer <token>"
+```
+
+### 2. Scheme Details
+```bash
+curl -X GET "http://localhost:8000/api/v1/schemes/<scheme_uuid>" \
+  -H "Authorization: Bearer <token>"
+```
+*Note: Inactive schemes return 404. Pending verification schemes return 404 unless `include_pending=true` is set. The response excludes internal rule AST to protect evaluator state.*
+
+## Seeding Government Scheme Data
+
+Seed files for central welfare schemes reside in `backend/data/schemes/`.
+
+```bash
+# 1. Dry run (pre-validates all JSON schemas and displays proposed changes with zero database writes)
+python -m app.scripts.seed_schemes --dry-run
+
+# 2. Live import of new / unverified schemes
+python -m app.scripts.seed_schemes
+
+# 3. Import with explicit override permission for verified records
+python -m app.scripts.seed_schemes --allow-override-verified
+```
+
 ## Project structure
 
 ```
 app/
 ├── main.py               # FastAPI application entry point
 ├── core/                 # Config, security (bcrypt & JWT), exceptions, logging
-├── api/v1/               # Route handlers (auth, profile, health)
+├── api/v1/               # Route handlers (auth, profile, schemes, health)
 ├── agents/               # Gemini orchestrator and tool registry (Phase 8)
 ├── tools/                # Agent-callable tool wrappers
-├── services/             # Business logic (auth_service, profile_service)
+├── services/             # Business logic (auth_service, profile_service, scheme_service)
 ├── eligibility/          # Deterministic rule engine (Phase 3)
-├── models/               # SQLAlchemy ORM models (User, UserProfile, UserConsent)
-├── schemas/              # Pydantic request/response schemas
+├── models/               # SQLAlchemy ORM models (User, UserProfile, UserConsent, Scheme, SchemeRuleVersion, SchemeDocument)
+├── schemas/              # Pydantic request/response schemas (auth, profile, scheme)
+├── scripts/              # Administrative CLI scripts (seed_schemes)
 ├── database/             # DB session, engine, dependencies, base
 └── jobs/                 # APScheduler background jobs
 
@@ -281,10 +323,10 @@ alembic/
 └── versions/             # Database migration revisions
 
 data/
-└── schemes/              # Curated scheme JSON seed files (Phase 2)
+└── schemes/              # Curated scheme JSON seed files with claim evidence manifests
 
 tests/
-├── unit/                 # Security & utility tests
-├── integration/          # PostgreSQL database tests
-└── api/                  # Auth, profile, health route tests
+├── unit/                 # Security, schemas & utility tests
+├── integration/          # PostgreSQL database, model, importer & migration tests
+└── api/                  # Auth, profile, scheme & health route tests
 ```

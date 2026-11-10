@@ -1,0 +1,131 @@
+{
+  "scheme_code": "PM-SVANIDHI",
+  "name": "PM Street Vendor's AtmaNirbhar Nidhi",
+  "short_title": "PM SVANidhi",
+  "description": "Central sector micro-credit scheme providing working capital loans to street vendors to build business credit, modernized with higher tranches and credit cards through 2030.",
+  "ministry": "Ministry of Housing and Urban Affairs",
+  "department": "Urban Livelihoods Division",
+  "category": "employment",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Urban street vendors",
+    "Hawkers and mobile food/goods sellers in statutory and peri-urban areas"
+  ],
+  "benefits": "Collateral-free working capital credit: 1st tranche up to Rs. 15,000, 2nd tranche up to Rs. 25,000, 3rd tranche up to Rs. 50,000, with 7% interest subsidy, monthly digital cashback, and UPI-linked RuPay credit card up to Rs. 30,000 upon timely 2nd loan repayment.",
+  "official_url": "https://pmsvanidhi.mohua.gov.in/",
+  "application_url": "https://pmsvanidhi.mohua.gov.in/Default/ApplicationProcess",
+  "source_url": "https://pmsvanidhi.mohua.gov.in/Default/ViewFile/?Path=Guidelines&FileName=Scheme_Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Housing and Urban Affairs (MoHUA), Government of India.",
+      "source_url": "https://pmsvanidhi.mohua.gov.in/Default/ViewFile/?Path=Guidelines&FileName=Scheme_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2024-02-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 1, Scheme Overview",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central sector micro-credit initiative accessible across urban and peri-urban jurisdictions nationwide.",
+      "source_url": "https://pmsvanidhi.mohua.gov.in/Default/ViewFile/?Path=Guidelines&FileName=Scheme_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2024-02-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Geographical Scope",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Street vendors engaged in vending in urban areas possessing vending certificate or identity card.",
+      "source_url": "https://pmsvanidhi.mohua.gov.in/Default/ViewFile/?Path=Guidelines&FileName=Scheme_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2024-02-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3.1, Beneficiary Criteria",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Restructured tranches of Rs. 15,000, Rs. 25,000, and Rs. 50,000 with 7% interest subsidy and credit cards approved through March 2030.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2161157",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2025-06-18",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB Press Release PRID 2161157",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official portal and vendor loan application hosted on pmsvanidhi.mohua.gov.in.",
+      "source_url": "https://pmsvanidhi.mohua.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Home Portal Online Application Form",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Operational disbursement update confirms active lending and interest subsidy credits across urban local bodies.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2303797",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2026-08-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB Press Release PRID 2303797",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "all": [
+      {
+        "field": "is_street_vendor",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "has_vending_certificate_or_lor",
+        "operator": "equals",
+        "value": true
+      }
+    ]
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar card for vendor identity verification.",
+      "is_mandatory": true,
+      "alternatives": [],
+      "issuing_authority": "UIDAI",
+      "guidance": "Mobile number must be linked with Aadhaar for application OTP verification.",
+      "source_url": "https://pmsvanidhi.mohua.gov.in/Default/ViewFile/?Path=Guidelines&FileName=Scheme_Guidelines.pdf"
+    },
+    {
+      "document_type": "vending_certificate",
+      "title": "Certificate of Vending or Identity Card",
+      "description": "Certificate issued by Urban Local Body / Town Vending Committee.",
+      "is_mandatory": true,
+      "alternatives": ["Letter of Recommendation (LoR) from ULB/TVC"],
+      "issuing_authority": "Town Vending Committee / Urban Local Body",
+      "guidance": "Obtain from local municipal corporation or apply for LoR through PMSVANidhi portal.",
+      "source_url": "https://pmsvanidhi.mohua.gov.in/Default/ViewFile/?Path=Guidelines&FileName=Scheme_Guidelines.pdf"
+    }
+  ]
+}

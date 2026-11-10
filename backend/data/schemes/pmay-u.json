@@ -1,0 +1,132 @@
+{
+  "scheme_code": "PMAY-U",
+  "name": "Pradhan Mantri Awas Yojana - Urban 2.0",
+  "short_title": "PMAY-U 2.0",
+  "description": "Government of India mission to provide all-weather pucca houses to eligible families in urban areas through interest subsidy, beneficiary-led construction, and affordable housing in partnership.",
+  "ministry": "Ministry of Housing and Urban Affairs",
+  "department": "Housing Division",
+  "category": "housing",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Economically Weaker Section (EWS) families",
+    "Low Income Group (LIG) families",
+    "Middle Income Group (MIG) families"
+  ],
+  "benefits": "Financial assistance and interest subsidy up to Rs. 2.50 lakh per eligible household for constructing or purchasing a pucca house under ISS, BLC, AHP, and ARHC verticals.",
+  "official_url": "https://pmay-urban.gov.in/",
+  "application_url": "https://pmay-urban.gov.in/open-application",
+  "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Housing and Urban Affairs (MoHUA), Government of India.",
+      "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2024-09-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 1, Mission Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central mission addressing urban housing shortages across all statutory towns in India.",
+      "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2024-09-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 1.2, Scope and Coverage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Families in urban areas belonging to EWS, LIG, and Middle Income Group who do not own a pucca house anywhere in India.",
+      "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2024-09-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Beneficiary Definition",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Central assistance and interest subsidy of up to Rs. 2.50 lakh per dwelling unit distributed based on chosen scheme vertical.",
+      "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2024-09-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3.1, Financial Assistance Verticals",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official PMAY-Urban portal and citizen registration hosted on pmay-urban.gov.in.",
+      "source_url": "https://pmay-urban.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Homepage Citizen Corner",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "10th CSMC meeting held on 16 October 2026 approved 1.93 lakh houses, taking cumulative sanctions under PMAY-U 2.0 to 20.80 lakh houses.",
+      "source_url": "https://pmay-urban.gov.in/uploads/csmc/10th-CSMC-Minutes-PMAY-U-2.pdf",
+      "source_type": "circular",
+      "issuing_authority": "Ministry of Housing and Urban Affairs",
+      "publication_date": "2026-10-16",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Minutes of the 10th CSMC Meeting, Section 2",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "all": [
+      {
+        "field": "owns_pucca_house_in_india",
+        "operator": "equals",
+        "value": false
+      },
+      {
+        "field": "is_urban_resident",
+        "operator": "equals",
+        "value": true
+      }
+    ]
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "Aadhaar cards for all family members included in the application.",
+      "is_mandatory": true,
+      "alternatives": [],
+      "issuing_authority": "UIDAI",
+      "guidance": "Ensure names match exactly with bank and property registration records.",
+      "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf"
+    },
+    {
+      "document_type": "income_certificate",
+      "title": "Income Certificate",
+      "description": "Proof of annual family income to verify EWS/LIG/MIG classification.",
+      "is_mandatory": true,
+      "alternatives": ["Form 16", "Income Tax Return"],
+      "issuing_authority": "Revenue Authority / Tehsildar",
+      "guidance": "Must be valid for the current financial year.",
+      "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf"
+    }
+  ]
+}
