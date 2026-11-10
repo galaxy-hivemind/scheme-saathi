@@ -23,7 +23,7 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_PASSWORD: ci_service_postgres_password
+          POSTGRES_PASSWORD: postgres
           POSTGRES_DB: postgres
         ports:
           - 5432:5432
@@ -52,7 +52,7 @@ jobs:
       - name: Initialize PostgreSQL CI Service Databases
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-client
-          export PGPASSWORD=ci_service_postgres_password
+          export PGPASSWORD=postgres
           psql -h localhost -U postgres -c "CREATE DATABASE scheme_saathi;"
           psql -h localhost -U postgres -c "CREATE DATABASE scheme_saathi_test;"
           psql -h localhost -U postgres -c "CREATE DATABASE scheme_saathi_migration_test;"
@@ -60,18 +60,25 @@ jobs:
       - name: Administratively Setup Restricted Role and Sentinels
         working-directory: backend
         env:
-          ADMIN_DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/postgres"
-          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          ADMIN_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
           ALLOW_TEST_DB_RESET: "1"
           ALLOW_MIGRATION_TESTS: "1"
         run: |
           python -m app.core.db_safety setup-roles --admin-url "$ADMIN_DATABASE_URL" --test-password "$TEST_DB_PASSWORD"
-          export PGPASSWORD=ci_service_postgres_password
+          export PGPASSWORD=postgres
           psql -h localhost -U postgres -d scheme_saathi_test -c "GRANT ALL ON SCHEMA public TO scheme_saathi_test_user;"
           psql -h localhost -U postgres -d scheme_saathi_migration_test -c "GRANT ALL ON SCHEMA public TO scheme_saathi_test_user;"
-          python -m app.core.db_safety provision --purpose regular_test --target-url "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi_test" --app-url "$DATABASE_URL"
-          python -m app.core.db_safety provision --purpose migration_test --target-url "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi_migration_test" --app-url "$DATABASE_URL"
+          python -m app.core.db_safety provision --purpose regular_test --target-url "postgresql://postgres:postgres@localhost:5432/scheme_saathi_test" --app-url "$DATABASE_URL"
+          python -m app.core.db_safety provision --purpose migration_test --target-url "postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test" --app-url "$DATABASE_URL"
+
+      - name: Apply Alembic Migrations to Application Database
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
+        run: |
+          alembic upgrade head
 
       - name: Run Unit Tests (Zero DB Fixtures)
         working-directory: backend
@@ -81,8 +88,8 @@ jobs:
       - name: Run Database Target Safety Regression Suite
         working-directory: backend
         env:
-          ADMIN_DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/postgres"
-          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          ADMIN_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
           ALLOW_TEST_DB_RESET: "1"
           ALLOW_MIGRATION_TESTS: "1"
@@ -92,7 +99,7 @@ jobs:
       - name: Run Alembic Schema Migration Tests
         working-directory: backend
         env:
-          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
           ALLOW_MIGRATION_TESTS: "1"
         run: |
@@ -101,7 +108,7 @@ jobs:
       - name: Run Database Integration Tests (Fallback Restricted Role)
         working-directory: backend
         env:
-          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
           ALLOW_TEST_DB_RESET: "1"
         run: |
@@ -110,7 +117,7 @@ jobs:
       - name: Run Database Integration Tests (Testcontainers Isolated)
         working-directory: backend
         env:
-          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           USE_TESTCONTAINERS: "1"
           ALLOW_TEST_DB_RESET: "1"
         run: |
@@ -119,8 +126,8 @@ jobs:
       - name: Run Full Backend Test Suite
         working-directory: backend
         env:
-          ADMIN_DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/postgres"
-          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          ADMIN_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
           ALLOW_TEST_DB_RESET: "1"
           ALLOW_MIGRATION_TESTS: "1"
@@ -130,7 +137,7 @@ jobs:
       - name: Verify Fail-Closed Authorization (Negative Test)
         working-directory: backend
         env:
-          DATABASE_URL: "postgresql://postgres:ci_service_postgres_password@localhost:5432/scheme_saathi"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/scheme_saathi"
           TEST_DB_PASSWORD: "ci_secure_test_runtime_password"
         run: |
           # Without ALLOW_TEST_DB_RESET, test_database.py must fail with PermissionError during session fixture setup
