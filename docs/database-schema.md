@@ -4,7 +4,60 @@
 **ORM:** SQLAlchemy 2.0
 **Migrations:** Alembic
 **Primary keys:** UUID v4
-**Phase 1 Status:** Implemented & Migrated (Revision: `d60b841ec91c`)
+**Phase 1 Status:** Implemented & Migrated (Head Revision: `bb1bf3e30acc`)
+
+---
+
+## Migration History
+
+1. **`d60b841ec91c`** — Initial schema creation (`users`, `user_profiles`, `user_consents`).
+2. **`bb1bf3e30acc`** — Alters `user_consents.user_id` foreign key from `CASCADE` to `RESTRICT` to enforce non-destructive consent audit retention.
+
+---
+
+## Test Database Isolation & Sentinel Trust Model
+
+To prevent any possibility of destructive testing operations (`drop_all`, `create_all`, `drop schema`) impacting the production or application database, Scheme Saathi implements a **fail-closed verifiable trust model** (`backend/app/core/db_safety.py`):
+
+### 1. Dual Isolation Architecture
+- **Testcontainers PostgreSQL (Preferred):** Dynamically spins up an ephemeral PostgreSQL 16 container on a random port, configures isolated credentials, runs tests, and destroys the container at the end of the session.
+- **Dedicated Role-Isolated Databases (Fallback):** Runs against pre-provisioned disposable databases (`scheme_saathi_test` and `scheme_saathi_migration_test`) using a dedicated, permission-restricted role (`scheme_saathi_test_user`).
+
+### 2. Privilege-Restricted Test Runtime Role (`scheme_saathi_test_user`)
+- **Application Database Isolation Model:** Direct database privileges are explicitly revoked from `scheme_saathi_test_user` on `scheme_saathi` (`REVOKE ALL ON DATABASE scheme_saathi FROM scheme_saathi_test_user; REVOKE CONNECT ON DATABASE scheme_saathi FROM scheme_saathi_test_user;`). Because standard PostgreSQL retains `CONNECT` for `PUBLIC` by default (preserved to avoid impacting other roles and databases), `has_database_privilege(role, 'scheme_saathi', 'CONNECT')` evaluates to `True` via inheritance. Connection refusal is enforced at the database engine level via session-level configuration (`ALTER ROLE scheme_saathi_test_user IN DATABASE scheme_saathi SET session_preload_libraries = 'nonexistent_lib';`), which causes the PostgreSQL backend process to abort initialization with `FATAL` immediately upon authentication. In addition, gateway and target checks verify `current_database() != 'scheme_saathi'`. Execution of `pg_control_system()` is explicitly revoked from `PUBLIC` so cluster identifiers cannot be queried by unprivileged roles.
+- **Read-Only Sentinel Access:** `GRANT SELECT ON _scheme_saathi_db_sentinel TO scheme_saathi_test_user; REVOKE ALL ON TABLE _scheme_saathi_db_sentinel FROM scheme_saathi_test_user; GRANT SELECT ON TABLE _scheme_saathi_db_sentinel TO scheme_saathi_test_user`.
+- **No Self-Authorization:** Test fixtures **never** auto-provision or alter the sentinel. Missing sentinel causes immediate failure.
+- **Rejection of Superusers/Administrators:** Fallback test fixtures strictly verify `current_user` against `scheme_saathi_test_user` and reject connections made by `postgres`, superusers, or administrator roles.
+
+### 3. Multi-Layer Anti-Application DB Protection
+Regardless of environment variables, the system verifies that the target does not collide with `DATABASE_URL`:
+- **Unconditional Name Rejection:** If target's live `current_database()` matches `DATABASE_URL`'s connected database name, the target is rejected across all hostnames, ports, driver schemes, and proxy endpoints.
+- **Fail-Closed on Unreachable App DB:** If `DATABASE_URL` cannot be reached during identity comparison, verification fails closed immediately.
+- Normalizes URL schemes (`postgresql`, `postgresql+psycopg`, `postgresql+psycopg2`, `postgresql+asyncpg`, `postgres`).
+- Resolves hostnames and IP addresses (`localhost`, `127.0.0.1`, `0.0.0.0`).
+- Matches ports and database names.
+- Compares live PostgreSQL catalog OIDs and cluster identifiers (`pg_database.oid`, `pg_control_system()`).
+
+### 4. Independent Authorization Scopes
+- `ALLOW_TEST_DB_RESET=1`: Authorizes regular test fixture setup/teardown on disposable test databases.
+- `ALLOW_MIGRATION_TESTS=1`: Authorizes schema-isolated migration tests.
+- Cross-role authorization is strictly rejected.
+- Unit tests run completely free of database fixtures and opt-in requirements (`pytest tests/unit/`).
+
+### 5. Centralized Destructive Execution Gateways & Live Catalog Revalidation
+Under project test conventions, all application-controlled destructive test DDL must route through verified gatekeeper functions:
+- `safe_drop_all(engine_or_conn, metadata, target_url, app_url, purpose, expected_role)`
+- `safe_create_all(engine_or_conn, metadata, target_url, app_url, purpose, expected_role)`
+- `safe_create_schema(engine_or_conn, schema_name, target_url, app_url, purpose, expected_role)`
+- `safe_drop_schema(engine_or_conn, schema_name, target_url, app_url, purpose, expected_role)` (strictly forbids dropping `public`, `pg_catalog`, or `information_schema`)
+
+> **Gateway Enforcement Scope:** The gateway functions verify target database identity, sentinel presence, opt-in authorization, role attributes, and transaction boundaries immediately before executing DDL. Direct raw SQL statements or unmanaged SQLAlchemy calls (such as `metadata.drop_all(bind=engine)`) that bypass these functions are not intercepted by the Python runtime; however, project conventions strictly mandate using the gateways, and PostgreSQL-level runtime role restrictions prevent destructive operations on the application database.
+
+Every gateway operation:
+1. Validates `expected_role` against the authoritative configured test runtime role (`TEST_DB_USER` or `scheme_saathi_test_user`), rejecting missing, `None`, empty, or unapproved roles before DDL.
+2. Directly queries PostgreSQL system catalogs (`pg_roles`, `pg_auth_members`) on the exact live execution connection immediately prior to DDL, verifying `rolsuper = FALSE`, `rolcreatedb = FALSE`, `rolcreaterole = FALSE`, `rolcanlogin = TRUE`, `rolinherit = FALSE`, `rolreplication = FALSE`, `rolbypassrls = FALSE`, and zero memberships.
+3. Preserves caller-owned active transactions and nested savepoints; gateway operations never commit unrelated caller DML.
+4. Uses driver-verified SQL composition (`get_dbapi_sql_composer`) and validated PostgreSQL identifiers. Container instances generate cryptographically random credentials per instance with automatic teardown on failure.
 
 ---
 
@@ -77,7 +130,6 @@ Explicit immutable consent audit records — retained for regulatory compliance.
 | consent_status | TEXT | 'given' / 'revoked' |
 | recorded_at | TIMESTAMPTZ | When consent was granted |
 | revoked_at | TIMESTAMPTZ | NULL until revoked; populated upon revocation |
-| revoked_at | TIMESTAMPTZ | NULL until revoked |
 
 ---
 
@@ -304,3 +356,28 @@ Immutable status audit trail.
 | notifications | User can only read own notifications |
 | schemes | Public read (all authenticated users) |
 | scheme_documents | Public read (all authenticated users) |
+
+---
+
+## Migration Testing and Schema Isolation
+
+To safely test Alembic migrations without risking data loss or contaminating the public application schema, Scheme Saathi uses dedicated per-run PostgreSQL schemas (`migtest_<uuid>`) and strict environment safety guards.
+
+### Safety Guards & Pre-flight Checks
+1. **Explicit Opt-in:** Destructive migration lifecycle tests require the explicit environment variable:
+   `ALLOW_MIGRATION_TESTS=1` (or `ALLOW_DESTRUCTIVE_MIGRATION_TESTS=1`).
+   Without this flag, destructive tests skip or reject execution to prevent inadvertent runs.
+2. **Database Identity Verification:** The test runner resolves target host IPs and queries PostgreSQL's `SELECT current_database()` as well as catalog identity (`pg_control_system()`, `pg_database`). If the target matches the active application database (configured via `DATABASE_URL`), test execution is immediately halted with a `ValueError`.
+3. **No Public Schema Drops:** The test runner **never** drops the `public` schema. All migration tables (`users`, `user_profiles`, `user_consents`, and `alembic_version`) are created inside an ephemeral schema unique to each test run.
+4. **Reliable Teardown:** Schema teardown (`DROP SCHEMA <schema_name> CASCADE`) executes in guaranteed teardown blocks, preserving any underlying assertion exceptions.
+
+### Running Migration Tests
+```bash
+# 1. Ensure test database is provisioned
+createdb -h localhost -U postgres scheme_saathi_migration_test
+
+# 2. Run migration test suite with explicit opt-in
+ALLOW_MIGRATION_TESTS=1 \
+MIGRATION_TEST_DB_URL=postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test \
+pytest tests/integration/test_migrations.py -v
+```
