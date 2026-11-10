@@ -1340,7 +1340,7 @@ def test_38_safe_target_url_combined_with_app_db_engine_rejected_and_app_db_unto
         tables_before = set(insp.get_table_names())
 
     try:
-        with pytest.raises((ValueError, PermissionError), match=r"Connection mismatch|active application database"):
+        with pytest.raises((ValueError, PermissionError), match=r"Connection mismatch|active application database|using administrative/superuser"):
             safe_drop_all(
                 engine=app_engine,
                 metadata=dummy_meta,
@@ -1356,3 +1356,546 @@ def test_38_safe_target_url_combined_with_app_db_engine_rejected_and_app_db_unto
             assert tables_before == tables_after, "Application database tables were modified by safe_drop_all!"
     finally:
         app_engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 7: ADMINISTRATIVE-TARGET BYPASS REGRESSION TESTS (39 TO 43)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_39_admin_engine_matching_admin_target_url_rejected_all_gateways(monkeypatch):
+    """
+    Scenario a: Administrative engine + matching administrative target URL ('postgres' on both).
+    All four gateways must unconditionally reject administrative connection before DDL,
+    leaving existing tables and schemas unchanged.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    admin_reg_url = "postgresql://postgres:postgres@localhost:5432/scheme_saathi_test"
+    admin_mig_url = "postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test"
+    admin_reg_engine = create_engine(admin_reg_url)
+    admin_mig_engine = create_engine(admin_mig_url)
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+
+    meta = MetaData()
+    canary_drop_tbl = f"canary_a_drop_{uuid.uuid4().hex[:6]}"
+    Table(canary_drop_tbl, meta, Column("id", Integer, primary_key=True))
+
+    canary_create_tbl = f"canary_a_create_{uuid.uuid4().hex[:6]}"
+    meta_create = MetaData()
+    Table(canary_create_tbl, meta_create, Column("id", Integer, primary_key=True))
+
+    canary_schema_drop = f"migtest_a_drop_{uuid.uuid4().hex[:6]}"
+    canary_schema_create = f"migtest_a_create_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # Pre-provision canaries with legitimate restricted connection
+        with test_engine.connect() as conn:
+            meta.create_all(bind=conn)
+            conn.commit()
+            insp = inspect(conn)
+            assert canary_drop_tbl in insp.get_table_names()
+
+        with migration_engine.connect() as conn:
+            conn.execute(text(f'CREATE SCHEMA "{canary_schema_drop}";'))
+            conn.commit()
+
+        # 1. safe_drop_all with matching admin credentials rejected
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role 'postgres'"):
+            safe_drop_all(
+                engine=admin_reg_engine,
+                metadata=meta,
+                target_url=admin_reg_url,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+            )
+        # Canary table remains untouched
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert canary_drop_tbl in insp.get_table_names(), "Canary table was unexpectedly dropped!"
+
+        # 2. safe_create_all with matching admin credentials rejected
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role 'postgres'"):
+            safe_create_all(
+                engine=admin_reg_engine,
+                metadata=meta_create,
+                target_url=admin_reg_url,
+                app_url=settings.DATABASE_URL,
+                purpose=REGULAR_TEST_PURPOSE,
+            )
+        # Canary table was not created
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert canary_create_tbl not in insp.get_table_names(), "Canary table was unexpectedly created!"
+
+        # 3. safe_create_schema with matching admin credentials rejected
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role 'postgres'"):
+            safe_create_schema(
+                engine=admin_mig_engine,
+                schema_name=canary_schema_create,
+                target_url=admin_mig_url,
+                app_url=settings.DATABASE_URL,
+                purpose=MIGRATION_TEST_PURPOSE,
+            )
+        # Canary schema was not created
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": canary_schema_create},
+            ).scalar()
+            assert not res, "Canary schema was unexpectedly created!"
+
+        # 4. safe_drop_schema with matching admin credentials rejected
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role 'postgres'"):
+            safe_drop_schema(
+                engine=admin_mig_engine,
+                schema_name=canary_schema_drop,
+                target_url=admin_mig_url,
+                app_url=settings.DATABASE_URL,
+                purpose=MIGRATION_TEST_PURPOSE,
+            )
+        # Canary schema remains untouched
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": canary_schema_drop},
+            ).scalar()
+            assert res, "Canary schema was unexpectedly dropped!"
+
+    finally:
+        with test_engine.connect() as conn:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{canary_drop_tbl}";'))
+            conn.commit()
+        with migration_engine.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{canary_schema_drop}" CASCADE;'))
+            conn.commit()
+        admin_reg_engine.dispose()
+        admin_mig_engine.dispose()
+        test_engine.dispose()
+        migration_engine.dispose()
+
+
+def test_40_superuser_engine_matching_superuser_target_url_rejected_all_gateways(monkeypatch):
+    """
+    Scenario b: Superuser engine + matching superuser target URL.
+    Verifies that the engine connection is verified as superuser (is_superuser == 'on'),
+    and that all four gateways unconditionally reject superuser connections before DDL.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    admin_reg_url = "postgresql://postgres:postgres@localhost:5432/scheme_saathi_test"
+    admin_mig_url = "postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test"
+    super_reg_engine = create_engine(admin_reg_url)
+    super_mig_engine = create_engine(admin_mig_url)
+
+    # Verify actual connection is superuser
+    with super_reg_engine.connect() as conn:
+        assert conn.execute(text("SELECT current_setting('is_superuser');")).scalar() == "on"
+
+    meta = MetaData()
+    tbl_name = f"canary_b_tbl_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_b_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_drop_all(super_reg_engine, meta, admin_reg_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_create_all(super_reg_engine, meta, admin_reg_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_create_schema(super_mig_engine, schema_name, admin_mig_url, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_drop_schema(super_mig_engine, schema_name, admin_mig_url, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+    finally:
+        super_reg_engine.dispose()
+        super_mig_engine.dispose()
+
+
+def test_41_admin_engine_target_url_with_no_username_rejected_all_gateways(monkeypatch):
+    """
+    Scenario c: Administrative engine + target URL with no username.
+    Even when target URL lacks user credentials, an administrative execution engine
+    must be rejected immediately before DDL across all four gateways.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    admin_reg_engine = create_engine("postgresql://postgres:postgres@localhost:5432/scheme_saathi_test")
+    admin_mig_engine = create_engine("postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test")
+
+    no_user_reg_url = "postgresql://localhost:5432/scheme_saathi_test"
+    no_user_mig_url = "postgresql://localhost:5432/scheme_saathi_migration_test"
+
+    meta = MetaData()
+    tbl_name = f"canary_c_tbl_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_c_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_drop_all(admin_reg_engine, meta, no_user_reg_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_create_all(admin_reg_engine, meta, no_user_reg_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_create_schema(admin_mig_engine, schema_name, no_user_mig_url, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role"):
+            safe_drop_schema(admin_mig_engine, schema_name, no_user_mig_url, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+    finally:
+        admin_reg_engine.dispose()
+        admin_mig_engine.dispose()
+
+
+def test_42_admin_engine_target_url_different_admin_role_rejected_all_gateways(monkeypatch):
+    """
+    Scenario d: Administrative engine + target URL specifying different administrative role ('root').
+    Rejection must occur before DDL across all four gateways.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    admin_reg_engine = create_engine("postgresql://postgres:postgres@localhost:5432/scheme_saathi_test")
+    admin_mig_engine = create_engine("postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test")
+
+    root_reg_url = "postgresql://root:somepass@localhost:5432/scheme_saathi_test"
+    root_mig_url = "postgresql://root:somepass@localhost:5432/scheme_saathi_migration_test"
+
+    meta = MetaData()
+    tbl_name = f"canary_d_tbl_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_d_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role|administrative role 'root'"):
+            safe_drop_all(admin_reg_engine, meta, root_reg_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role|administrative role 'root'"):
+            safe_create_all(admin_reg_engine, meta, root_reg_url, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role|administrative role 'root'"):
+            safe_create_schema(admin_mig_engine, schema_name, root_mig_url, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+
+        with pytest.raises(PermissionError, match=r"using administrative/superuser role|administrative role 'root'"):
+            safe_drop_schema(admin_mig_engine, schema_name, root_mig_url, settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+    finally:
+        admin_reg_engine.dispose()
+        admin_mig_engine.dispose()
+
+
+def test_43_restricted_runtime_role_matching_target_url_succeeds_all_gateways(monkeypatch):
+    """
+    Scenario e: Restricted runtime role + matching target URL succeeds across all four gateways.
+    Verifies that safe_create_all, safe_drop_all, safe_create_schema, and safe_drop_schema
+    all succeed cleanly when connecting under the restricted runtime role.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+
+    meta = MetaData()
+    tbl_name = f"canary_e_tbl_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_e_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # 1. safe_create_all succeeds
+        safe_create_all(test_engine, meta, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name in insp.get_table_names()
+
+        # 2. safe_drop_all succeeds
+        safe_drop_all(test_engine, meta, TEST_DATABASE_URL, settings.DATABASE_URL, purpose=REGULAR_TEST_PURPOSE)
+        with test_engine.connect() as conn:
+            insp = inspect(conn)
+            assert tbl_name not in insp.get_table_names()
+
+        # 3. safe_create_schema succeeds
+        safe_create_schema(migration_engine, schema_name, get_migration_test_db_url(), settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert res is True
+
+        # 4. safe_drop_schema succeeds
+        safe_drop_schema(migration_engine, schema_name, get_migration_test_db_url(), settings.DATABASE_URL, purpose=MIGRATION_TEST_PURPOSE)
+        with migration_engine.connect() as conn:
+            res = conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert res is False
+    finally:
+        test_engine.dispose()
+        migration_engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 8: EXPLICIT TRANSACTION OWNERSHIP REGRESSION TESTS (44 TO 48)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_44_engine_based_gateway_commits_own_ddl(monkeypatch):
+    """
+    Requirement 1: Engine-based gateway checks out a connection, owns the transaction,
+    commits on success, and closes connection on exit.
+    DDL changes are immediately visible on a separate, fresh connection.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+
+    meta = MetaData()
+    tbl_name = f"canary_tx44_tbl_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_tx44_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # safe_create_all via engine
+        safe_create_all(test_engine, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+        # Fresh connection from engine sees table
+        with test_engine.connect() as fresh_conn:
+            insp = inspect(fresh_conn)
+            assert tbl_name in insp.get_table_names()
+
+        # safe_drop_all via engine
+        safe_drop_all(test_engine, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+        with test_engine.connect() as fresh_conn:
+            insp = inspect(fresh_conn)
+            assert tbl_name not in insp.get_table_names()
+
+        # safe_create_schema via engine
+        safe_create_schema(migration_engine, schema_name, get_migration_test_db_url(), settings.DATABASE_URL)
+        with migration_engine.connect() as fresh_conn:
+            res = fresh_conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert res is True
+
+        # safe_drop_schema via engine
+        safe_drop_schema(migration_engine, schema_name, get_migration_test_db_url(), settings.DATABASE_URL)
+        with migration_engine.connect() as fresh_conn:
+            res = fresh_conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert res is False
+    finally:
+        test_engine.dispose()
+        migration_engine.dispose()
+
+
+def test_45_connection_based_gateway_does_not_commit_outer_transaction(monkeypatch):
+    """
+    Requirement 2: Connection-based gateway does not commit outer transaction.
+    When caller supplies a Connection with an active transaction (conn.in_transaction()),
+    the gateway uses a nested transaction/savepoint. Rolling back the outer transaction
+    rolls back the gateway's DDL execution.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+
+    meta = MetaData()
+    tbl_name = f"canary_tx45_tbl_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_tx45_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # 1. safe_create_all inside caller's outer transaction
+        conn = test_engine.connect()
+        trans = conn.begin()
+        safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+        # Roll back caller's outer transaction
+        trans.rollback()
+        conn.close()
+
+        # Table must NOT exist on a fresh connection
+        with test_engine.connect() as fresh_conn:
+            insp = inspect(fresh_conn)
+            assert tbl_name not in insp.get_table_names(), "Table was prematurely committed by gateway!"
+
+        # 2. safe_create_schema inside caller's outer transaction
+        mig_conn = migration_engine.connect()
+        mig_trans = mig_conn.begin()
+        safe_create_schema(mig_conn, schema_name, get_migration_test_db_url(), settings.DATABASE_URL)
+        # Roll back caller's outer transaction
+        mig_trans.rollback()
+        mig_conn.close()
+
+        # Schema must NOT exist on a fresh connection
+        with migration_engine.connect() as fresh_conn:
+            res = fresh_conn.execute(
+                text("SELECT exists(SELECT 1 FROM information_schema.schemata WHERE schema_name = :s)"),
+                {"s": schema_name},
+            ).scalar()
+            assert not res, "Schema was prematurely committed by gateway!"
+    finally:
+        test_engine.dispose()
+        migration_engine.dispose()
+
+
+def test_46_unrelated_pending_dml_remains_rollbackable_after_gateway_operation(monkeypatch):
+    """
+    Requirement 3: Unrelated pending DML remains rollback-able after gateway operation.
+    Caller executes DML in outer transaction, calls gateway to execute DDL, then rolls back
+    outer transaction. The pending DML row must NOT be committed.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    parent_tbl = f"canary_tx46_parent_{uuid.uuid4().hex[:6]}"
+    sub_tbl = f"canary_tx46_sub_{uuid.uuid4().hex[:6]}"
+
+    meta_parent = MetaData()
+    Table(parent_tbl, meta_parent, Column("id", Integer, primary_key=True))
+    meta_sub = MetaData()
+    Table(sub_tbl, meta_sub, Column("id", Integer, primary_key=True))
+
+    try:
+        # Pre-create parent table
+        with test_engine.connect() as conn:
+            meta_parent.create_all(bind=conn)
+            conn.commit()
+
+        # Caller begins outer transaction and executes pending DML
+        conn = test_engine.connect()
+        trans = conn.begin()
+        conn.execute(text(f'INSERT INTO "{parent_tbl}" VALUES (101);'))
+
+        # Gateway executes safe_create_all within nested savepoint
+        safe_create_all(conn, meta_sub, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Gateway executes safe_drop_all on sub_tbl within nested savepoint
+        safe_drop_all(conn, meta_sub, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Caller rolls back outer transaction
+        trans.rollback()
+        conn.close()
+
+        # Verify on a fresh connection: DML row 101 was NOT committed!
+        with test_engine.connect() as fresh_conn:
+            count = fresh_conn.execute(text(f'SELECT count(*) FROM "{parent_tbl}";')).scalar()
+            assert count == 0, f"Pending DML was prematurely committed! Expected 0 rows, got {count}"
+    finally:
+        with test_engine.connect() as conn:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{parent_tbl}";'))
+            conn.commit()
+        test_engine.dispose()
+
+
+def test_47_failed_gateway_operation_does_not_commit_or_abort_outer_transaction(monkeypatch):
+    """
+    Requirement 4: Failed gateway operation does not commit or abort unrelated caller work.
+    Caller starts transaction, executes DML, gateway fails and rolls back its savepoint.
+    The outer transaction remains valid (not aborted), allowing caller to execute further
+    DML and commit successfully.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    parent_tbl = f"canary_tx47_parent_{uuid.uuid4().hex[:6]}"
+    meta_parent = MetaData()
+    Table(parent_tbl, meta_parent, Column("id", Integer, primary_key=True))
+
+    try:
+        # Pre-create parent table
+        with test_engine.connect() as conn:
+            meta_parent.create_all(bind=conn)
+            conn.commit()
+
+        # Caller begins outer transaction and executes initial DML
+        conn = test_engine.connect()
+        try:
+            trans = conn.begin()
+            conn.execute(text(f'INSERT INTO "{parent_tbl}" VALUES (201);'))
+
+            # Gateway fails inside its nested savepoint (mismatched database in target URL)
+            with pytest.raises(ValueError, match=r"Connection mismatch.*database"):
+                meta_dummy = MetaData()
+                safe_create_all(
+                    conn,
+                    meta_dummy,
+                    "postgresql://scheme_saathi_test_user:test_secure_password@localhost:5432/wrong_target_db",
+                    settings.DATABASE_URL,
+                )
+
+            # Crucial check: outer transaction remains active and NOT aborted into InFailedSqlTransaction
+            assert conn.in_transaction() is True, "Outer transaction was unexpectedly terminated by gateway failure!"
+
+            # Caller successfully executes further DML on the surviving transaction
+            conn.execute(text(f'INSERT INTO "{parent_tbl}" VALUES (202);'))
+            trans.commit()
+        finally:
+            conn.close()
+
+        # Verify on fresh connection: both DML rows were committed successfully!
+        with test_engine.connect() as fresh_conn:
+            rows = fresh_conn.execute(text(f'SELECT id FROM "{parent_tbl}" ORDER BY id;')).scalars().all()
+            assert rows == [201, 202], f"Expected [201, 202], got {rows}"
+    finally:
+        with test_engine.connect() as conn:
+            conn.execute(text(f'DROP TABLE IF EXISTS "{parent_tbl}";'))
+            conn.commit()
+        test_engine.dispose()
+
+
+def test_48_verification_and_ddl_execute_on_exact_same_connection_object(monkeypatch):
+    """
+    Requirement 5: Verification and DDL execute on the exact same connection object.
+    When caller supplies a Connection, the gateway executes verification and DDL
+    against that exact Connection instance without closing it or checking out another.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+
+    meta = MetaData()
+    tbl_name = f"canary_tx48_tbl_{uuid.uuid4().hex[:6]}"
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_tx48_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # safe_create_all and safe_drop_all on same Connection
+        with test_engine.connect() as conn:
+            initial_conn_id = id(conn)
+            safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+            assert not conn.closed, "Caller connection was closed after safe_create_all!"
+            assert id(conn) == initial_conn_id
+
+            safe_drop_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+            assert not conn.closed, "Caller connection was closed after safe_drop_all!"
+            assert id(conn) == initial_conn_id
+
+        # safe_create_schema and safe_drop_schema on same Connection
+        with migration_engine.connect() as mig_conn:
+            initial_mig_id = id(mig_conn)
+            safe_create_schema(mig_conn, schema_name, get_migration_test_db_url(), settings.DATABASE_URL)
+            assert not mig_conn.closed, "Caller connection was closed after safe_create_schema!"
+            assert id(mig_conn) == initial_mig_id
+
+            safe_drop_schema(mig_conn, schema_name, get_migration_test_db_url(), settings.DATABASE_URL)
+            assert not mig_conn.closed, "Caller connection was closed after safe_drop_schema!"
+            assert id(mig_conn) == initial_mig_id
+    finally:
+        test_engine.dispose()
+        migration_engine.dispose()
+

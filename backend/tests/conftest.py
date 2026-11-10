@@ -62,19 +62,40 @@ def get_test_database_url() -> str:
                 from testcontainers.postgres import PostgresContainer
             _test_container = PostgresContainer("postgres:16-alpine")
             _test_container.start()
-            container_url = _test_container.get_connection_url()
-            if container_url.startswith("postgresql+psycopg2://"):
-                container_url = container_url.replace("postgresql+psycopg2://", "postgresql://")
-            # Provision sentinel inside disposable container
+            admin_url = _test_container.get_connection_url()
+            if admin_url.startswith("postgresql+psycopg2://"):
+                admin_url = admin_url.replace("postgresql+psycopg2://", "postgresql://")
+
+            # 1. Administratively provision restricted runtime role inside disposable container
+            from app.core.db_safety import normalize_db_url
+            container_test_password = "container_runtime_test_password"
+            admin_engine = create_engine(admin_url, pool_pre_ping=True)
+            with admin_engine.connect() as conn:
+                conn.execute(text(f"""
+                    CREATE ROLE "{TEST_DB_USER}" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
+                    NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD '{container_test_password}';
+                """))
+                conn.execute(text(f'GRANT CONNECT, TEMPORARY, CREATE ON DATABASE test TO "{TEST_DB_USER}";'))
+                conn.execute(text(f'GRANT ALL ON SCHEMA public TO "{TEST_DB_USER}";'))
+                conn.commit()
+
+            # 2. Administratively provision sentinel inside disposable container
             provision_test_database_sentinel(
-                target_url=container_url,
+                target_url=admin_url,
                 app_url=settings.DATABASE_URL,
                 purpose=REGULAR_TEST_PURPOSE,
                 enforce_opt_in=False,
-                grant_role=None,
+                grant_role=TEST_DB_USER,
             )
-            return container_url
-        return _test_container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
+            admin_engine.dispose()
+
+            parsed = normalize_db_url(admin_url)
+            container_runtime_url = f"postgresql://{TEST_DB_USER}:{container_test_password}@{parsed.host}:{parsed.port or 5432}/{parsed.database or 'test'}"
+            return container_runtime_url
+        from app.core.db_safety import normalize_db_url
+        raw_admin = _test_container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
+        parsed = normalize_db_url(raw_admin)
+        return f"postgresql://{TEST_DB_USER}:container_runtime_test_password@{parsed.host}:{parsed.port or 5432}/{parsed.database or 'test'}"
 
     # Fallback mode: require explicit credentials
     from urllib.parse import quote_plus
@@ -161,21 +182,20 @@ def setup_test_db():
     active_url = get_test_database_url()
     active_engine = get_test_engine()
 
-    # 2. Check role restriction for fallback mode (reject superusers/admins)
-    if not USE_TESTCONTAINERS:
-        with active_engine.connect() as conn:
-            connected_user = conn.execute(text("SELECT current_user;")).scalar()
-            is_super = conn.execute(text("SELECT current_setting('is_superuser');")).scalar()
-        if is_super == "on" or connected_user in ADMIN_ROLES:
-            raise PermissionError(
-                f"Test fixture execution with administrative/superuser role '{connected_user}' is forbidden. "
-                f"Fallback execution must use the restricted runtime role '{TEST_DB_USER}'."
-            )
-        if connected_user != TEST_DB_USER:
-            raise PermissionError(
-                f"Expected fallback execution to connect as restricted role '{TEST_DB_USER}', "
-                f"but connected as '{connected_user}'."
-            )
+    # 2. Check role restriction uniformly (reject superusers/admins)
+    with active_engine.connect() as conn:
+        connected_user = conn.execute(text("SELECT current_user;")).scalar()
+        is_super = conn.execute(text("SELECT current_setting('is_superuser');")).scalar()
+    if is_super == "on" or (connected_user and connected_user.lower() in ADMIN_ROLES):
+        raise PermissionError(
+            f"Test fixture execution with administrative/superuser role '{connected_user}' is forbidden. "
+            f"Test execution must use the restricted runtime role '{TEST_DB_USER}'."
+        )
+    if connected_user != TEST_DB_USER:
+        raise PermissionError(
+            f"Expected test execution to connect as restricted role '{TEST_DB_USER}', "
+            f"but connected as '{connected_user}'."
+        )
 
     # 3. Verify target database isolation (fails immediately if sentinel is missing or target unsafe)
     verify_database_isolation(
@@ -183,8 +203,7 @@ def setup_test_db():
         app_url=settings.DATABASE_URL,
         expected_purpose=REGULAR_TEST_PURPOSE,
         enforce_opt_in=True,
-        enforce_restricted_role=(not USE_TESTCONTAINERS),
-        expected_role=TEST_DB_USER if not USE_TESTCONTAINERS else None,
+        expected_role=TEST_DB_USER,
     )
 
     # 4. Perform centralized safe setup
@@ -196,8 +215,7 @@ def setup_test_db():
             active_url,
             settings.DATABASE_URL,
             purpose=REGULAR_TEST_PURPOSE,
-            enforce_restricted_role=(not USE_TESTCONTAINERS),
-            expected_role=TEST_DB_USER if not USE_TESTCONTAINERS else None,
+            expected_role=TEST_DB_USER,
         )
         safe_create_all(
             active_engine,
@@ -205,8 +223,7 @@ def setup_test_db():
             active_url,
             settings.DATABASE_URL,
             purpose=REGULAR_TEST_PURPOSE,
-            enforce_restricted_role=(not USE_TESTCONTAINERS),
-            expected_role=TEST_DB_USER if not USE_TESTCONTAINERS else None,
+            expected_role=TEST_DB_USER,
         )
         setup_succeeded = True
         yield
@@ -219,8 +236,7 @@ def setup_test_db():
                 active_url,
                 settings.DATABASE_URL,
                 purpose=REGULAR_TEST_PURPOSE,
-                enforce_restricted_role=(not USE_TESTCONTAINERS),
-                expected_role=TEST_DB_USER if not USE_TESTCONTAINERS else None,
+                expected_role=TEST_DB_USER,
             )
 
         # Stop Testcontainers container if one was started
