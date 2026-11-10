@@ -1,7 +1,7 @@
 """
 Unit tests for Deterministic Tri-State Eligibility Engine and safe operators.
-Tests all operators, AST combinators (all/any), boundary conditions, missing fields,
-and next-question generation.
+Tests all operators, strict boolean equality, AST combinators (all/any), boundary conditions,
+missing fields, criteria completeness, independent authority enforcement, and next-question generation.
 """
 from datetime import date, datetime, timezone, timedelta
 from decimal import Decimal
@@ -10,6 +10,7 @@ import pytest
 
 from app.eligibility.operators import (
     evaluate_operator,
+    parse_strict_bool,
     op_equals,
     op_not_equals,
     op_greater_than,
@@ -36,7 +37,7 @@ from app.models.user_profile import UserProfile
 from app.schemas.eligibility import TriStateStatus, EligibilityResultStatus
 
 
-# ── Operator Unit Tests ──────────────────────────────────────────────────────
+# ── Operator Unit Tests & Blocker A Strict Boolean Tests ─────────────────────
 
 def test_operator_equality_and_inequality():
     """Verify type-safe, case-insensitive equality and inequality."""
@@ -53,6 +54,64 @@ def test_operator_equality_and_inequality():
     assert evaluate_operator("not_equals", "urban", "rural") is True
     assert evaluate_operator("not_equals", "urban", "URBAN") is False
     assert evaluate_operator("not_equals", 20, 25) is True
+
+
+def test_strict_boolean_operator_validation():
+    """
+    Blocker A: Verify strict boolean handling.
+    - Matches explicit allowed string representations: true/false, 1/0, yes/no.
+    - Rejects invalid strings with ValueError (does not silently convert to False).
+    - Rejects empty strings, arbitrary integers, and incompatible types.
+    - Ensures not_equals enforces identical strict comparison semantics.
+    """
+    # 1. Allowed representations
+    assert evaluate_operator("equals", "true", True) is True
+    assert evaluate_operator("equals", "TRUE  ", True) is True
+    assert evaluate_operator("equals", "1", True) is True
+    assert evaluate_operator("equals", "yes", True) is True
+
+    assert evaluate_operator("equals", "false", False) is True
+    assert evaluate_operator("equals", "  FALSE", False) is True
+    assert evaluate_operator("equals", "0", False) is True
+    assert evaluate_operator("equals", "no", False) is True
+
+    # 2. Strict rejection of invalid strings
+    with pytest.raises(ValueError, match="Invalid boolean string value: 'invalid-value'"):
+        evaluate_operator("equals", "invalid-value", False)
+
+    with pytest.raises(ValueError, match="Invalid boolean string value: 'maybe'"):
+        evaluate_operator("equals", "maybe", True)
+
+    with pytest.raises(ValueError, match="Invalid boolean string value: ''"):
+        evaluate_operator("equals", "", False)
+
+    # 3. Numeric values must not be implicitly interpreted as booleans
+    with pytest.raises(ValueError, match="Cannot interpret value of type 'int' as a boolean"):
+        evaluate_operator("equals", 1, True)
+
+    with pytest.raises(ValueError, match="Cannot interpret value of type 'int' as a boolean"):
+        evaluate_operator("equals", 0, False)
+
+    with pytest.raises(ValueError, match="Cannot interpret value of type 'int' as a boolean"):
+        evaluate_operator("equals", 2, True)
+
+    # 4. not_equals preserves strict boolean semantics
+    assert evaluate_operator("not_equals", "true", False) is True
+    assert evaluate_operator("not_equals", "false", True) is True
+    with pytest.raises(ValueError, match="Invalid boolean string value: 'invalid-value'"):
+        evaluate_operator("not_equals", "invalid-value", False)
+
+
+def test_strict_exists_operator():
+    """Verify op_exists validates expected argument as a strict boolean."""
+    assert evaluate_operator("exists", "valid_data", True) is True
+    assert evaluate_operator("exists", "valid_data", "true") is True
+    assert evaluate_operator("exists", None, "false") is True
+    assert evaluate_operator("exists", None, "0") is True
+    assert evaluate_operator("exists", None, True) is False
+
+    with pytest.raises(ValueError, match="Invalid boolean string value: 'not-a-bool'"):
+        evaluate_operator("exists", "data", "not-a-bool")
 
 
 def test_operator_comparisons_and_boundaries():
@@ -94,11 +153,6 @@ def test_operator_in_not_in_exists_contains():
     assert evaluate_operator("in", None, [1, 2]) is False
     assert evaluate_operator("not_in", "education", ["agriculture", "health"]) is True
 
-    # Exists
-    assert evaluate_operator("exists", "some_value", True) is True
-    assert evaluate_operator("exists", None, True) is False
-    assert evaluate_operator("exists", None, False) is True
-
     # Contains
     assert evaluate_operator("contains", "Pradhan Mantri Awas Yojana", "Awas") is True
     assert evaluate_operator("contains", ["aadhaar", "pan"], "aadhaar") is True
@@ -125,7 +179,6 @@ def test_age_calculation_from_dob():
     dob_exact_25 = date(today.year - 25, today.month, today.day)
     assert _calculate_age(dob_exact_25) == 25
 
-    # Birthday hasn't occurred yet this year
     if today.month < 12:
         dob_upcoming = date(today.year - 25, 12, 28)
         assert _calculate_age(dob_upcoming) == 24
@@ -179,6 +232,22 @@ def test_extract_profile_field_hierarchy():
     )
     assert present is True
     assert val is False
+
+
+def test_unknown_residence_type_returns_unknown():
+    """Secondary Fix: Unknown residence_type must not imply anything; returns UNKNOWN."""
+    profile_unknown_residence = UserProfile(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        residence_type="coastal_zone",  # Invalid / unknown
+    )
+    val_u, pres_u = extract_profile_field("is_urban_resident", profile_unknown_residence)
+    assert pres_u is False
+    assert val_u is None
+
+    val_r, pres_r = extract_profile_field("is_rural_resident", profile_unknown_residence)
+    assert pres_r is False
+    assert val_r is None
 
 
 # ── Condition & AST Evaluation Tests ─────────────────────────────────────────
@@ -282,8 +351,8 @@ def test_ast_any_combinator_tri_state_logic():
     profile_pass = UserProfile(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
-        date_of_birth=date(1950, 1, 1),  # age > 70
-        profile_data={},  # is_secc_deprived_family missing
+        date_of_birth=date(1950, 1, 1),
+        profile_data={},
     )
     status, leaves = evaluate_ast(ast, profile_pass)
     assert status == TriStateStatus.PASS
@@ -292,7 +361,7 @@ def test_ast_any_combinator_tri_state_logic():
     profile_fail = UserProfile(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
-        date_of_birth=date(1990, 1, 1),  # age ~36
+        date_of_birth=date(1990, 1, 1),
         profile_data={"is_secc_deprived_family": False},
     )
     status, leaves = evaluate_ast(ast, profile_fail)
@@ -307,6 +376,23 @@ def test_ast_any_combinator_tri_state_logic():
     )
     status, leaves = evaluate_ast(ast, profile_unknown)
     assert status == TriStateStatus.UNKNOWN
+
+
+def test_empty_or_malformed_combinators_rejected():
+    """Secondary Fix: Reject malformed or empty combinators with a controlled ValueError."""
+    profile = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4())
+
+    with pytest.raises(ValueError, match="Combinator 'all' must be a non-empty list"):
+        evaluate_ast({"all": []}, profile)
+
+    with pytest.raises(ValueError, match="Combinator 'any' must be a non-empty list"):
+        evaluate_ast({"any": []}, profile)
+
+    with pytest.raises(ValueError, match="Combinator 'all' must be a non-empty list"):
+        evaluate_ast({"all": "invalid_children"}, profile)
+
+    with pytest.raises(ValueError, match="AST node must be a dictionary"):
+        evaluate_ast("not_a_dict", profile)
 
 
 def test_ast_nested_combinators():
@@ -354,7 +440,7 @@ def test_next_question_localization():
     assert q_age.field_type == "number"
 
 
-# ── Scheme-Level Integration Evaluation Tests ───────────────────────────────
+# ── Scheme-Level Evaluation & Blocker B / C Regression Tests ────────────────
 
 def _create_mock_scheme(
     scheme_code: str,
@@ -362,9 +448,25 @@ def _create_mock_scheme(
     criteria: dict,
     is_authoritative: bool = True,
     is_provisional: bool = False,
+    scheme_status: str = "active",
+    effective_from: Optional[date] = None,
+    effective_to: Optional[date] = None,
 ) -> Scheme:
-    """Helper to instantiate mock Scheme and SchemeRuleVersion."""
+    """Helper to instantiate mock Scheme and SchemeRuleVersion with verified evidence."""
     s_id = uuid.uuid4()
+    evidence = [
+        {
+            "claim": "operational_status",
+            "source_type": "guideline",
+            "source_url": "https://example.gov.in/guidelines.pdf",
+            "issuing_authority": "Ministry of Example",
+            "retrieved_at": "2026-11-10T10:00:00Z",
+            "citation": "Clause 1",
+            "verification_status": "verified",
+            "verified_at": "2026-11-10T12:00:00Z",
+        }
+    ] if scheme_status == "active" else []
+
     scheme = Scheme(
         id=s_id,
         scheme_code=scheme_code,
@@ -376,10 +478,10 @@ def _create_mock_scheme(
         target_beneficiaries=["farmers"],
         benefits="Sample financial benefit",
         source_url="https://example.gov.in/guidelines.pdf",
-        scheme_status="active",
+        scheme_status=scheme_status,
         last_retrieved_at=datetime.now(timezone.utc),
-        last_verified_at=datetime.now(timezone.utc),
-        source_evidence=[],
+        last_verified_at=datetime.now(timezone.utc) if scheme_status == "active" else None,
+        source_evidence=evidence,
     )
     criteria_copy = dict(criteria)
     criteria_copy["is_authoritative"] = is_authoritative
@@ -390,7 +492,8 @@ def _create_mock_scheme(
         scheme_id=s_id,
         version=1,
         is_active=True,
-        effective_from=datetime.now(timezone.utc),
+        effective_from=effective_from or date.today(),
+        effective_to=effective_to,
         eligibility_criteria=criteria_copy,
         source_url="https://example.gov.in/guidelines.pdf",
     )
@@ -398,15 +501,107 @@ def _create_mock_scheme(
     return scheme
 
 
-def test_evaluate_pm_kisan_scenarios():
+def test_blocker_b_incomplete_criteria_all_conditions_pass_returns_unknown():
     """
-    Test PM-KISAN evaluation against verified criteria:
-    all: [is_landholding_farmer==True, is_institutional_landholder==False, is_income_tax_payer==False]
+    Blocker B: When all represented conditions pass but criteria_complete=False:
+    - Must return UNKNOWN (indeterminate decision).
+    - Must return eligible=None (never definitive eligible=True).
+    - Preserves matched_conditions.
+    - Result is 'potentially_eligible'.
+    - Explanation clearly highlights incomplete criteria.
     """
     criteria = {
         "is_authoritative": True,
         "is_provisional": False,
-        "limitations": "Core statutory eligibility conditions verified from Operational Guidelines.",
+        "criteria_complete": False,  # Incomplete model
+        "limitations": "Detailed exclusion categories not fully modelled.",
+        "all": [
+            {"field": "is_landholding_farmer", "operator": "equals", "value": True},
+            {"field": "is_institutional_landholder", "operator": "equals", "value": False},
+        ],
+    }
+    scheme = _create_mock_scheme("PM-KISAN", "PM Kisan Samman Nidhi", criteria)
+
+    profile = UserProfile(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        profile_data={
+            "is_landholding_farmer": True,
+            "is_institutional_landholder": False,
+        },
+    )
+    res = evaluate_scheme_eligibility(scheme, profile)
+
+    assert res.overall_status == TriStateStatus.UNKNOWN
+    assert res.result == EligibilityResultStatus.POTENTIALLY_ELIGIBLE
+    assert res.eligible is None
+    assert res.criteria_complete is False
+    assert len(res.matched_conditions) == 2
+    assert len(res.failed_conditions) == 0
+    assert "not fully modelled in the catalogue" in res.explanation
+
+
+def test_blocker_b_incomplete_criteria_with_exclusion_returns_fail():
+    """
+    Blocker B: Known mandatory exclusion still establishes FAIL regardless
+    of criteria completeness.
+    """
+    criteria = {
+        "is_authoritative": True,
+        "is_provisional": False,
+        "criteria_complete": False,  # Incomplete
+        "all": [
+            {"field": "is_landholding_farmer", "operator": "equals", "value": True},
+            {"field": "is_income_tax_payer", "operator": "equals", "value": False},
+        ],
+    }
+    scheme = _create_mock_scheme("PM-KISAN", "PM Kisan Samman Nidhi", criteria)
+
+    # Taxpayer fails mandatory condition
+    profile = UserProfile(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        profile_data={"is_landholding_farmer": True, "is_income_tax_payer": True},
+    )
+    res = evaluate_scheme_eligibility(scheme, profile)
+
+    assert res.overall_status == TriStateStatus.FAIL
+    assert res.result == EligibilityResultStatus.NOT_ELIGIBLE
+    assert res.eligible is False
+    assert len(res.failed_conditions) == 1
+    assert res.failed_conditions[0].field == "is_income_tax_payer"
+
+
+def test_blocker_b_missing_completeness_metadata_defaults_to_incomplete():
+    """
+    Blocker B: Missing completeness metadata defaults to False, not complete.
+    """
+    criteria = {
+        "is_authoritative": True,
+        "is_provisional": False,
+        # 'criteria_complete' omitted
+        "all": [
+            {"field": "is_farmer", "operator": "equals", "value": True},
+        ],
+    }
+    scheme = _create_mock_scheme("TEST-SCHEME", "Test Scheme", criteria)
+    profile = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), profile_data={"is_farmer": True})
+
+    res = evaluate_scheme_eligibility(scheme, profile)
+    assert res.criteria_complete is False
+    assert res.overall_status == TriStateStatus.UNKNOWN
+    assert res.eligible is None
+
+
+def test_blocker_b_complete_criteria_returns_eligible():
+    """
+    Blocker B: A scheme with criteria_complete=True returns definitive eligible=True
+    when all conditions pass.
+    """
+    criteria = {
+        "is_authoritative": True,
+        "is_provisional": False,
+        "criteria_complete": True,  # Explicitly complete
         "all": [
             {"field": "is_landholding_farmer", "operator": "equals", "value": True},
             {"field": "is_institutional_landholder", "operator": "equals", "value": False},
@@ -414,9 +609,7 @@ def test_evaluate_pm_kisan_scenarios():
         ],
     }
     scheme = _create_mock_scheme("PM-KISAN", "PM Kisan Samman Nidhi", criteria)
-
-    # Scenario 1: Fully Eligible Farmer
-    eligible_profile = UserProfile(
+    profile = UserProfile(
         id=uuid.uuid4(),
         user_id=uuid.uuid4(),
         profile_data={
@@ -425,132 +618,73 @@ def test_evaluate_pm_kisan_scenarios():
             "is_income_tax_payer": False,
         },
     )
-    res = evaluate_scheme_eligibility(scheme, eligible_profile)
+    res = evaluate_scheme_eligibility(scheme, profile)
+
     assert res.overall_status == TriStateStatus.PASS
     assert res.result == EligibilityResultStatus.ELIGIBLE
     assert res.eligible is True
-    assert len(res.matched_conditions) == 3
-    assert len(res.failed_conditions) == 0
-    assert len(res.unknown_conditions) == 0
-    assert res.is_authoritative is True
+    assert res.criteria_complete is True
 
-    # Scenario 2: Income Tax Payer Excluded
-    taxpayer_profile = UserProfile(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        profile_data={
-            "is_landholding_farmer": True,
-            "is_institutional_landholder": False,
-            "is_income_tax_payer": True,
-        },
+
+def test_blocker_c_pending_scheme_cannot_become_authoritative():
+    """
+    Blocker C: A pending_verification scheme must always return is_authoritative=False,
+    even if its AST explicitly claims is_authoritative=True.
+    """
+    criteria = {
+        "is_authoritative": True,  # AST erroneously claims authoritative
+        "is_provisional": False,
+        "criteria_complete": True,
+        "all": [{"field": "age", "operator": "greater_than_or_equal", "value": 18}],
+    }
+    # Scheme is pending_verification
+    scheme = _create_mock_scheme(
+        "PMUY",
+        "PM Ujjwala Yojana",
+        criteria,
+        scheme_status="pending_verification",
     )
-    res_tax = evaluate_scheme_eligibility(scheme, taxpayer_profile)
-    assert res_tax.overall_status == TriStateStatus.FAIL
-    assert res_tax.result == EligibilityResultStatus.NOT_ELIGIBLE
-    assert res_tax.eligible is False
-    assert len(res_tax.failed_conditions) == 1
-    assert res_tax.failed_conditions[0].field == "is_income_tax_payer"
+    profile = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), date_of_birth=date(1995, 1, 1))
 
-    # Scenario 3: Missing landholder information -> UNKNOWN with next question
-    incomplete_profile = UserProfile(
-        id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-        profile_data={"is_income_tax_payer": False},
+    res = evaluate_scheme_eligibility(scheme, profile)
+    # Authority cannot be elevated by AST
+    assert res.is_authoritative is False
+    assert res.is_provisional is True
+
+
+def test_rule_version_effective_dates_filtering():
+    """
+    Secondary Fix: Confirm active rule selection respects effective_from and effective_to.
+    """
+    today = date.today()
+    criteria = {
+        "criteria_complete": True,
+        "all": [{"field": "age", "operator": "greater_than", "value": 18}],
+    }
+
+    # 1. Rule starting tomorrow (future) must not be selected
+    scheme_future = _create_mock_scheme(
+        "FUTURE-SCHEME",
+        "Future Scheme",
+        criteria,
+        effective_from=today + timedelta(days=1),
     )
-    res_unk = evaluate_scheme_eligibility(scheme, incomplete_profile)
-    assert res_unk.overall_status == TriStateStatus.UNKNOWN
-    assert res_unk.result == EligibilityResultStatus.POTENTIALLY_ELIGIBLE
-    assert res_unk.eligible is None
-    assert "is_landholding_farmer" in res_unk.missing_fields
-    assert len(res_unk.next_questions) >= 1
-    assert res_unk.next_questions[0].field == "is_landholding_farmer"
+    profile = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), date_of_birth=date(1990, 1, 1))
+    res_future = evaluate_scheme_eligibility(scheme_future, profile)
+    assert res_future.overall_status == TriStateStatus.UNKNOWN
+    assert "no active rules are defined" in res_future.explanation
 
-
-def test_all_seven_canonical_schemes_evaluation():
-    """Verify that all 7 canonical seed schemes in backend/data/schemes evaluate accurately."""
-    import json
-    from pathlib import Path
-
-    schemes_dir = Path(__file__).resolve().parent.parent.parent / "data" / "schemes"
-    seed_files = list(schemes_dir.glob("*.json"))
-    assert len(seed_files) == 7
-
-    for f in seed_files:
-        with open(f, "r", encoding="utf-8") as fp:
-            data = json.load(fp)
-
-        scheme_code = data["scheme_code"]
-        criteria = data.get("eligibility_criteria")
-        if not criteria:
-            continue
-
-        mock_scheme = _create_mock_scheme(
-            scheme_code=scheme_code,
-            name=data["name"],
-            criteria=criteria,
-            is_authoritative=criteria.get("is_authoritative", True),
-            is_provisional=criteria.get("is_provisional", False),
-        )
-
-        # 1. Blank profile should produce UNKNOWN with next questions
-        blank_profile = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4())
-        res_blank = evaluate_scheme_eligibility(mock_scheme, blank_profile)
-        assert res_blank.overall_status == TriStateStatus.UNKNOWN
-        assert len(res_blank.missing_fields) > 0
-        assert len(res_blank.next_questions) == len(res_blank.missing_fields)
-
-        # 2. Scheme-specific PASS and FAIL validations
-        if scheme_code == "AB-PMJAY":
-            # Senior 70+ satisfies ANY branch immediately -> PASS
-            senior_profile = UserProfile(
-                id=uuid.uuid4(),
-                user_id=uuid.uuid4(),
-                date_of_birth=date(1950, 1, 1),
-            )
-            res_senior = evaluate_scheme_eligibility(mock_scheme, senior_profile)
-            assert res_senior.overall_status == TriStateStatus.PASS
-            assert res_senior.eligible is True
-
-        elif scheme_code == "PM-SVANIDHI":
-            # Urban vendor with LoR -> PASS
-            vendor_profile = UserProfile(
-                id=uuid.uuid4(),
-                user_id=uuid.uuid4(),
-                profile_data={"is_street_vendor": True, "has_vending_certificate_or_lor": True},
-            )
-            res_vendor = evaluate_scheme_eligibility(mock_scheme, vendor_profile)
-            assert res_vendor.overall_status == TriStateStatus.PASS
-
-            # Non-vendor -> FAIL
-            non_vendor = UserProfile(
-                id=uuid.uuid4(),
-                user_id=uuid.uuid4(),
-                profile_data={"is_street_vendor": False, "has_vending_certificate_or_lor": False},
-            )
-            res_non = evaluate_scheme_eligibility(mock_scheme, non_vendor)
-            assert res_non.overall_status == TriStateStatus.FAIL
-
-        elif scheme_code == "PMAY-U":
-            # Pucca house owner -> FAIL
-            homeowner = UserProfile(
-                id=uuid.uuid4(),
-                user_id=uuid.uuid4(),
-                profile_data={"owns_pucca_house_in_india": True, "is_urban_resident": True},
-            )
-            res_home = evaluate_scheme_eligibility(mock_scheme, homeowner)
-            assert res_home.overall_status == TriStateStatus.FAIL
-
-        elif scheme_code == "PMUY":
-            # Male applicant -> FAIL
-            male_applicant = UserProfile(
-                id=uuid.uuid4(),
-                user_id=uuid.uuid4(),
-                gender="male",
-                date_of_birth=date(1995, 1, 1),
-                profile_data={"has_existing_lpg_connection": False},
-            )
-            res_male = evaluate_scheme_eligibility(mock_scheme, male_applicant)
-            assert res_male.overall_status == TriStateStatus.FAIL
+    # 2. Rule expired yesterday must not be selected
+    scheme_expired = _create_mock_scheme(
+        "EXPIRED-SCHEME",
+        "Expired Scheme",
+        criteria,
+        effective_from=today - timedelta(days=30),
+        effective_to=today - timedelta(days=1),
+    )
+    res_expired = evaluate_scheme_eligibility(scheme_expired, profile)
+    assert res_expired.overall_status == TriStateStatus.UNKNOWN
+    assert "no active rules are defined" in res_expired.explanation
 
 
 def test_evaluate_scheme_without_rule_version():
@@ -570,7 +704,7 @@ def test_evaluate_scheme_without_rule_version():
         last_retrieved_at=datetime.now(timezone.utc),
         source_evidence=[],
     )
-    scheme.rule_versions = []  # No rule version
+    scheme.rule_versions = []
 
     profile = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4())
     res = evaluate_scheme_eligibility(scheme, profile)

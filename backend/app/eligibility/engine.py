@@ -2,6 +2,7 @@
 Deterministic Tri-State Eligibility Evaluation Engine.
 Evaluates structured SchemeRuleVersion AST criteria against citizen profiles.
 Pure Python, type-safe, non-evaluating, and transparent.
+Enforces independent authority checks, strict boolean handling, and criteria completeness.
 """
 from typing import Any, Dict, List, Optional, Tuple, Set
 from datetime import date, datetime, timezone
@@ -11,7 +12,7 @@ import uuid
 from app.models.scheme import Scheme
 from app.models.scheme_rule_version import SchemeRuleVersion
 from app.models.user_profile import UserProfile
-from app.eligibility.operators import evaluate_operator, OPERATORS
+from app.eligibility.operators import evaluate_operator, parse_strict_bool, OPERATORS
 from app.schemas.eligibility import (
     TriStateStatus,
     EligibilityResultStatus,
@@ -114,6 +115,9 @@ FIELD_QUESTIONS: Dict[str, Tuple[str, str, str, Optional[List[str]]]] = {
     ),
 }
 
+# Explicit supported residence categories
+VALID_RESIDENCE_TYPES: Set[str] = {"rural", "urban", "semi_urban"}
+
 
 def _calculate_age(dob: Optional[date]) -> Optional[int]:
     """Calculate age in years from date of birth."""
@@ -142,7 +146,6 @@ def extract_profile_field(
 
     # 2. Check derived fields
     if field_name in ("age", "applicant_age"):
-        # Check override, then direct profile_data, then calculate from date_of_birth
         if profile.profile_data and field_name in profile.profile_data:
             val = profile.profile_data[field_name]
             if val is not None:
@@ -163,7 +166,14 @@ def extract_profile_field(
 
     if field_name == "is_urban_resident":
         if profile.residence_type:
-            return profile.residence_type.strip().lower() == "urban", True
+            rt = profile.residence_type.strip().lower()
+            if rt == "urban":
+                return True, True
+            elif rt in ("rural", "semi_urban"):
+                return False, True
+            else:
+                # Unknown residence_type must not imply anything; return UNKNOWN
+                return None, False
         if profile.profile_data and "is_urban_resident" in profile.profile_data:
             val = profile.profile_data["is_urban_resident"]
             return val, val is not None
@@ -171,7 +181,13 @@ def extract_profile_field(
 
     if field_name == "is_rural_resident":
         if profile.residence_type:
-            return profile.residence_type.strip().lower() == "rural", True
+            rt = profile.residence_type.strip().lower()
+            if rt == "rural":
+                return True, True
+            elif rt in ("urban", "semi_urban"):
+                return False, True
+            else:
+                return None, False
         if profile.profile_data and "is_rural_resident" in profile.profile_data:
             val = profile.profile_data["is_rural_resident"]
             return val, val is not None
@@ -280,14 +296,21 @@ def evaluate_ast(
 ) -> Tuple[TriStateStatus, List[ConditionResult]]:
     """
     Recursively evaluate an eligibility AST node (supporting nested 'all' and 'any' combinators).
+    Rejects malformed or empty combinators with a controlled ValueError.
     Returns (overall_status, list_of_leaf_condition_results).
     """
+    if not isinstance(node, dict):
+        raise ValueError(f"AST node must be a dictionary, got {type(node).__name__}: {node!r}")
+
     # 1. Combinator 'all':
     # - Any FAIL -> FAIL
     # - All PASS -> PASS
     # - Otherwise -> UNKNOWN
     if "all" in node:
         children = node["all"]
+        if not isinstance(children, list) or len(children) == 0:
+            raise ValueError(f"Combinator 'all' must be a non-empty list of condition nodes, got: {children!r}")
+
         all_leaf_results: List[ConditionResult] = []
         child_statuses: List[TriStateStatus] = []
 
@@ -308,6 +331,9 @@ def evaluate_ast(
     # - Otherwise -> UNKNOWN
     if "any" in node:
         children = node["any"]
+        if not isinstance(children, list) or len(children) == 0:
+            raise ValueError(f"Combinator 'any' must be a non-empty list of condition nodes, got: {children!r}")
+
         all_leaf_results = []
         child_statuses = []
 
@@ -327,7 +353,7 @@ def evaluate_ast(
         res = evaluate_condition_node(node, profile, override_data)
         return res.status, [res]
 
-    raise ValueError(f"Invalid AST node; must contain 'all', 'any', or a leaf condition: {node}")
+    raise ValueError(f"Invalid AST node; must contain non-empty 'all', 'any', or a leaf condition: {node}")
 
 
 def get_next_question(field_name: str, preferred_language: str = "hi") -> NextQuestion:
@@ -361,15 +387,25 @@ def evaluate_scheme_eligibility(
 ) -> EligibilityResult:
     """
     Evaluate citizen profile against a scheme's active rule version.
+    Enforces:
+      - Active rule selection respecting effective_from and effective_to.
+      - Independent authority enforcement (pending schemes are never authoritative).
+      - Criteria completeness (incomplete criteria cannot return eligible=True).
     Returns a complete, transparent EligibilityResult.
     """
     now = datetime.now(timezone.utc)
+    today = date.today()
     preferred_lang = profile.preferred_language if profile else "hi"
 
-    # Find the active rule version
-    active_rule: Optional[SchemeRuleVersion] = next(
-        (r for r in scheme.rule_versions if r.is_active),
-        None,
+    # 1. Select the active rule version respecting effective date ranges
+    active_rules = [
+        r for r in scheme.rule_versions
+        if r.is_active
+        and (r.effective_from is None or r.effective_from <= today)
+        and (r.effective_to is None or r.effective_to >= today)
+    ]
+    active_rule: Optional[SchemeRuleVersion] = (
+        max(active_rules, key=lambda r: r.version) if active_rules else None
     )
 
     # Handle schemes with no active rule version or null criteria
@@ -385,6 +421,7 @@ def evaluate_scheme_eligibility(
             rule_version=active_rule.version if active_rule else None,
             is_authoritative=False,
             is_provisional=True,
+            criteria_complete=False,
             limitations="No structured eligibility criteria AST is defined for this scheme.",
             matched_conditions=[],
             failed_conditions=[],
@@ -393,19 +430,37 @@ def evaluate_scheme_eligibility(
             missing_fields=[],
             next_questions=[],
             explanation=(
-                "पात्रता निर्धारित नहीं की जा सकी क्योंकि इस योजना के लिए कोई आधिकारिक पात्रता नियम परिभाषित नहीं हैं।"
+                "पात्रता निर्धारित नहीं की जा सकी क्योंकि इस योजना के लिए कोई सक्रिय पात्रता नियम परिभाषित नहीं हैं।"
                 if preferred_lang == "hi"
-                else "Eligibility cannot be determined because no authoritative rules are defined for this scheme."
+                else "Eligibility cannot be determined because no active rules are defined for this scheme."
             ),
             evaluated_at=now,
         )
 
     criteria = active_rule.eligibility_criteria
-    is_authoritative = bool(criteria.get("is_authoritative", False))
-    is_provisional = bool(criteria.get("is_provisional", not is_authoritative))
+
+    # 2. Independent Authority Enforcement (Blocker C)
+    # Authority is determined by scheme status & verified evidence, NOT AST claims alone.
+    scheme_is_verified = (
+        scheme.scheme_status == "active"
+        and scheme.last_verified_at is not None
+        and bool(scheme.source_evidence)
+        and all(
+            isinstance(e, dict) and e.get("verification_status") == "verified"
+            for e in scheme.source_evidence
+        )
+    )
+    ast_claims_authoritative = bool(criteria.get("is_authoritative", False))
+    # An unverified or pending scheme cannot be elevated to authoritative by its AST
+    is_authoritative = scheme_is_verified and ast_claims_authoritative
+    is_provisional = not is_authoritative or bool(criteria.get("is_provisional", False))
+
+    # 3. Criteria Completeness (Blocker B)
+    # Default to incomplete (False) if missing from metadata
+    criteria_complete = bool(criteria.get("criteria_complete", False))
     limitations = criteria.get("limitations")
 
-    # Evaluate AST
+    # 4. Evaluate AST
     overall_status, leaf_results = evaluate_ast(criteria, profile, override_data)
 
     matched = [r for r in leaf_results if r.status == TriStateStatus.PASS]
@@ -416,16 +471,32 @@ def evaluate_scheme_eligibility(
     missing_fields: List[str] = list(dict.fromkeys(r.field for r in unknown))
     next_questions = [get_next_question(f, preferred_lang) for f in missing_fields]
 
-    # Derive high-level result & explanation
+    # 5. Derive Decision and Enforce Safe Incomplete Criteria Outcomes
     if overall_status == TriStateStatus.PASS:
-        result = EligibilityResultStatus.ELIGIBLE
-        eligible = True
-        explanation = (
-            f"बधाई हो! आप {scheme.name} के लिए पात्र हैं। आपके द्वारा प्रदान की गई सभी {len(matched)} शर्तें पूरी होती हैं।"
-            if preferred_lang == "hi"
-            else f"Eligible! You satisfy all {len(matched)} evaluated eligibility criteria for {scheme.name}."
-        )
+        if not criteria_complete:
+            # Blocker B Requirement: When all represented conditions pass but criteria are incomplete,
+            # must NOT return definitive eligible=True. Return UNKNOWN / POTENTIALLY_ELIGIBLE.
+            overall_status = TriStateStatus.UNKNOWN
+            result = EligibilityResultStatus.POTENTIALLY_ELIGIBLE
+            eligible = None
+            explanation = (
+                f"संभावित रूप से पात्र! आपके द्वारा प्रदान किए गए सभी {len(matched)} जांचे गए मानदंड पूरे होते हैं, "
+                f"लेकिन {scheme.name} के सभी वैधानिक मानदंड अभी तक पूरी तरह से मॉडल नहीं किए गए हैं। "
+                f"अंतिम पात्रता निर्णय के लिए अतिरिक्त सरकारी सत्यापन आवश्यक है。"
+                if preferred_lang == "hi"
+                else f"Potentially eligible! All {len(matched)} evaluated criteria were satisfied, but complete statutory "
+                f"eligibility rules for {scheme.name} are not fully modelled in the catalogue (limitations: {limitations or 'additional statutory exclusion criteria'})."
+            )
+        else:
+            result = EligibilityResultStatus.ELIGIBLE
+            eligible = True
+            explanation = (
+                f"बधाई हो! आप {scheme.name} के लिए पात्र हैं। आपके द्वारा प्रदान की गई सभी {len(matched)} शर्तें पूरी होती हैं।"
+                if preferred_lang == "hi"
+                else f"Eligible! You satisfy all {len(matched)} evaluated eligibility criteria for {scheme.name}."
+            )
     elif overall_status == TriStateStatus.FAIL:
+        # Known mandatory exclusions establish definitive FAIL regardless of criteria completeness
         result = EligibilityResultStatus.NOT_ELIGIBLE
         eligible = False
         failed_fields = ", ".join(f"'{r.field}'" for r in failed)
@@ -435,7 +506,7 @@ def evaluate_scheme_eligibility(
             else f"Not eligible for {scheme.name}. The following criteria were not satisfied: {failed_fields}."
         )
     else:
-        # UNKNOWN
+        # UNKNOWN due to missing fields
         eligible = None
         if len(matched) > 0 and len(failed) == 0:
             result = EligibilityResultStatus.POTENTIALLY_ELIGIBLE
@@ -463,6 +534,7 @@ def evaluate_scheme_eligibility(
         rule_version=active_rule.version,
         is_authoritative=is_authoritative,
         is_provisional=is_provisional,
+        criteria_complete=criteria_complete,
         limitations=limitations,
         matched_conditions=matched,
         failed_conditions=failed,

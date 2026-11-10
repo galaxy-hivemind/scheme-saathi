@@ -14,6 +14,7 @@ from app.schemas.common import APIResponse
 from app.schemas.scheme import SchemeCategory
 from app.schemas.eligibility import (
     EligibilityCheckRequest,
+    EligibilityEvaluatePathRequest,
     EligibilityResult,
     BatchEligibilityCheckRequest,
     BatchEligibilityResponse,
@@ -59,7 +60,7 @@ def check_eligibility(
 )
 def evaluate_scheme_by_id(
     scheme_id: uuid.UUID,
-    payload: Optional[EligibilityCheckRequest] = None,
+    payload: Optional[EligibilityEvaluatePathRequest] = None,
     include_pending: bool = Query(False, description="Whether to permit evaluation of pending_verification schemes"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -116,3 +117,4 @@ def evaluate_all_schemes(
         profile_override=profile_override,
     )
     return APIResponse.ok(result)
+

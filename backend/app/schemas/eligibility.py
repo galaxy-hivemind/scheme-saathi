@@ -50,6 +50,14 @@ class EligibilityCheckRequest(BaseModel):
     )
 
 
+class EligibilityEvaluatePathRequest(BaseModel):
+    """Request payload for path-based eligibility evaluation (scheme_id supplied in path)."""
+    profile_override: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Optional temporary profile attribute overrides for what-if evaluation"
+    )
+
+
 class EligibilityResult(BaseModel):
     """Comprehensive eligibility evaluation outcome for a scheme."""
     model_config = ConfigDict(from_attributes=True)
@@ -64,6 +72,7 @@ class EligibilityResult(BaseModel):
     rule_version: Optional[int] = None
     is_authoritative: bool = Field(default=False, description="True if based on verified statutory guidelines")
     is_provisional: bool = Field(default=True, description="True if based on provisional/incomplete rule criteria")
+    criteria_complete: bool = Field(default=False, description="True if all material eligibility rules and statutory exclusions are fully modelled")
     limitations: Optional[str] = Field(None, description="Known statutory limitations or missing sub-rules")
     matched_conditions: List[ConditionResult] = Field(default_factory=list)
     failed_conditions: List[ConditionResult] = Field(default_factory=list)
@@ -98,3 +107,4 @@ class BatchEligibilityResponse(BaseModel):
     ineligible_count: int
     unknown_count: int
     results: List[EligibilityResult]
+

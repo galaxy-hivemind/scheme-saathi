@@ -1,8 +1,8 @@
 """
 Eligibility evaluation package for Scheme Saathi.
-Provides deterministic tri-state AST evaluation, safe operators, and next-question generation.
+Provides deterministic tri-state AST evaluation, strict operators, and next-question generation.
 """
-from app.eligibility.operators import evaluate_operator, OPERATORS
+from app.eligibility.operators import evaluate_operator, parse_strict_bool, OPERATORS
 from app.eligibility.engine import (
     evaluate_scheme_eligibility,
     evaluate_ast,
@@ -13,6 +13,7 @@ from app.eligibility.engine import (
 
 __all__ = [
     "evaluate_operator",
+    "parse_strict_bool",
     "OPERATORS",
     "evaluate_scheme_eligibility",
     "evaluate_ast",

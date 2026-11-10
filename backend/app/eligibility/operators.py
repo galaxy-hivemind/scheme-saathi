@@ -1,15 +1,48 @@
 """
 Deterministic eligibility rule operators and type-safe evaluation.
 Pure Python implementation with no eval, exec, or external expression engines.
+Includes strict boolean validation and safe type coercion.
 """
 from typing import Any, Callable, Dict, List
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 
 
+def parse_strict_bool(val: Any) -> bool:
+    """
+    Parse a value strictly as a boolean.
+    Accepts:
+      - Genuine Python booleans (True, False).
+      - Strict string representations: 'true', '1', 'yes' (case-insensitive, trimmed) -> True
+      - Strict string representations: 'false', '0', 'no' (case-insensitive, trimmed) -> False
+    Rejects:
+      - All other strings, numbers, collections, None with a controlled ValueError.
+      - Arbitrary integers (e.g. 2, -1, 0, 1 as int/float/Decimal) are strictly rejected
+        because numeric types must not be implicitly converted to booleans.
+    """
+    if type(val) is bool:
+        return val
+
+    if isinstance(val, str):
+        norm = val.strip().lower()
+        if norm in ("true", "1", "yes"):
+            return True
+        if norm in ("false", "0", "no"):
+            return False
+        raise ValueError(
+            f"Invalid boolean string value: '{val}'. "
+            f"Allowed boolean strings: 'true', 'false', '1', '0', 'yes', 'no'."
+        )
+
+    raise ValueError(
+        f"Cannot interpret value of type '{type(val).__name__}' as a boolean: {val!r}. "
+        f"Only booleans and allowed string representations ('true'/'false', '1'/'0', 'yes'/'no') are accepted."
+    )
+
+
 def _to_decimal(val: Any) -> Decimal:
     """Safely convert numeric or string values to Decimal for precise comparison."""
-    if isinstance(val, bool):
+    if type(val) is bool:
         raise ValueError(f"Cannot convert boolean value '{val}' to numeric Decimal")
     if isinstance(val, (int, float, Decimal)):
         return Decimal(str(val))
@@ -36,23 +69,18 @@ def _to_date(val: Any) -> date:
 
 
 def op_equals(actual: Any, expected: Any) -> bool:
-    """Compare equality with case-insensitivity for strings, booleans, and numeric coercion."""
+    """Compare equality with strict boolean semantics, string case-insensitivity, and numeric coercion."""
     if actual is None and expected is None:
         return True
     if actual is None or expected is None:
         return False
 
-    # Boolean comparison (handles bool vs bool and bool vs string representation)
-    if isinstance(actual, bool) or isinstance(expected, bool):
-        if isinstance(actual, bool) and isinstance(expected, bool):
-            return actual is expected
-        if isinstance(actual, str):
-            actual_bool = actual.strip().lower() in ("true", "1", "yes")
-            return actual_bool is expected
-        if isinstance(expected, str):
-            expected_bool = expected.strip().lower() in ("true", "1", "yes")
-            return actual is expected_bool
-        return False
+    # Strict Boolean Comparison:
+    # If either operand is a boolean, both must be evaluated strictly as booleans
+    if type(actual) is bool or type(expected) is bool:
+        b_actual = parse_strict_bool(actual)
+        b_expected = parse_strict_bool(expected)
+        return b_actual is b_expected
 
     # String comparison
     if isinstance(actual, str) and isinstance(expected, str):
@@ -75,7 +103,7 @@ def op_equals(actual: Any, expected: Any) -> bool:
 
 
 def op_not_equals(actual: Any, expected: Any) -> bool:
-    """Compare inequality."""
+    """Compare inequality with the same strict comparison semantics."""
     return not op_equals(actual, expected)
 
 
@@ -136,10 +164,13 @@ def op_not_in(actual: Any, expected: Any) -> bool:
 
 
 def op_exists(actual: Any, expected: Any) -> bool:
-    """Check whether field exists / is non-null. Expected is a boolean."""
-    expected_bool = bool(expected)
+    """
+    Check whether field exists / is non-null.
+    Expected argument must be a genuine boolean or explicitly supported boolean string.
+    """
+    expected_bool = parse_strict_bool(expected)
     actual_exists = actual is not None
-    return actual_exists == expected_bool
+    return actual_exists is expected_bool
 
 
 def op_contains(actual: Any, expected: Any) -> bool:
