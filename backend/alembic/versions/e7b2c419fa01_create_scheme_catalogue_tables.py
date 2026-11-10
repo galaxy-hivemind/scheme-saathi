@@ -109,6 +109,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("clock_timestamp()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("clock_timestamp()")),
         sa.UniqueConstraint("scheme_id", "document_type", name="uq_scheme_documents_scheme_doc_type"),
+        sa.CheckConstraint("char_length(trim(document_type)) > 0", name="ck_scheme_documents_type_nonempty"),
     )
 
     op.create_index("ix_scheme_documents_scheme_id", "scheme_documents", ["scheme_id"])

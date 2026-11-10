@@ -94,6 +94,9 @@
     }
   ],
   "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Captures pucca house ownership exclusion and EWS/LIG economic criteria under PMAY-U 2.0.",
     "all": [
       {
         "field": "owns_pucca_house_in_india",
@@ -130,3 +133,4 @@
     }
   ]
 }
+

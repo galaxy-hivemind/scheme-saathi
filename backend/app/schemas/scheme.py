@@ -1,7 +1,7 @@
 """
 Pydantic schemas for Government Schemes, Source Evidence, and Catalogue APIs.
 """
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from enum import Enum
 from typing import Optional, List, Dict, Any, Set, Literal
 import uuid
@@ -155,14 +155,44 @@ class SchemeSeedSchema(BaseModel):
 
     @model_validator(mode="after")
     def validate_seed(self) -> "SchemeSeedSchema":
-        # Enforce distinct material claims
+        now_utc = datetime.now(timezone.utc)
+
+        # 1. Enforce timezone-aware UTC with zero offset for top-level last_retrieved_at
+        if self.last_retrieved_at.tzinfo is None:
+            raise ValueError("last_retrieved_at must be timezone-aware UTC with zero offset")
+        if self.last_retrieved_at.utcoffset() != timedelta(0):
+            raise ValueError("last_retrieved_at must have zero UTC offset")
+        if self.last_retrieved_at > now_utc:
+            raise ValueError("last_retrieved_at cannot be in the future")
+
+        # 2. Enforce top-level last_verified_at semantics
+        if self.last_verified_at is not None:
+            if self.last_verified_at.tzinfo is None:
+                raise ValueError("last_verified_at must be timezone-aware UTC with zero offset")
+            if self.last_verified_at.utcoffset() != timedelta(0):
+                raise ValueError("last_verified_at must have zero UTC offset")
+            if self.last_verified_at > now_utc:
+                raise ValueError("last_verified_at cannot be in the future")
+            if self.last_verified_at < self.last_retrieved_at:
+                raise ValueError("last_verified_at cannot precede last_retrieved_at")
+
+            for evidence in self.source_evidence:
+                if evidence.verification_status == VerificationStatus.VERIFIED and evidence.verified_at:
+                    if self.last_verified_at < evidence.verified_at:
+                        raise ValueError(
+                            f"last_verified_at ({self.last_verified_at.isoformat()}) cannot precede "
+                            f"verified evidence timestamp ({evidence.verified_at.isoformat()}) "
+                            f"for claim '{evidence.claim.value}'"
+                        )
+
+        # 3. Enforce distinct material claims
         claims_seen = set()
         for evidence in self.source_evidence:
             if evidence.claim in claims_seen:
                 raise ValueError(f"Duplicate evidence entry for claim: {evidence.claim}")
             claims_seen.add(evidence.claim)
 
-        # Enforce active scheme standard
+        # 4. Enforce active scheme standard
         all_required_claims = {
             MaterialClaim.NAME_AND_MINISTRY,
             MaterialClaim.CATEGORY_AND_SCOPE,
@@ -246,3 +276,4 @@ class SchemeDetailResponse(BaseModel):
     required_documents: List[SchemeDocumentResponse]
 
     model_config = ConfigDict(from_attributes=True)
+

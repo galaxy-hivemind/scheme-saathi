@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     UniqueConstraint,
+    CheckConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -85,4 +86,6 @@ class SchemeDocument(Base, TimestampMixin):
 
     __table_args__ = (
         UniqueConstraint("scheme_id", "document_type", name="uq_scheme_documents_scheme_doc_type"),
+        CheckConstraint("char_length(trim(document_type)) > 0", name="ck_scheme_documents_type_nonempty"),
     )
+

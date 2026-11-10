@@ -85,3 +85,4 @@ class SchemeRuleVersion(Base, TimestampMixin):
             postgresql_where=text("is_active = true"),
         ),
     )
+

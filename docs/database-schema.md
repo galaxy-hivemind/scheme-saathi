@@ -197,7 +197,7 @@ Append-only eligibility rule versions (JSONB). In Phase 2, historical rule versi
 - Foreign Key: `fk_scheme_rule_versions_scheme_id` referencing `schemes(id)` with `ON DELETE RESTRICT`
 - Unique Constraint: `uq_scheme_rule_versions_scheme_version` on `(scheme_id, version)`
 - Check Constraint: `ck_scheme_rule_versions_version_positive` (`version >= 1`)
-- Partial Unique Index: `idx_rule_versions_active_unique` on `(scheme_id)` `WHERE is_active = TRUE` (enforces exactly one active rule version per scheme)
+- Partial Unique Index: `uq_scheme_rule_versions_active` on `(scheme_id)` `WHERE is_active = TRUE` (enforces at most one active rule version per scheme, allowing zero active versions if none are active, and permitting multiple inactive historical versions)
 
 ---
 

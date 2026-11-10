@@ -138,3 +138,4 @@ def get_scheme(
     )
 
     return APIResponse.ok(detail_data)
+

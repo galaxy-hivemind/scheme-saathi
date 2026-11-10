@@ -4,7 +4,7 @@ Integration tests for Scheme SQLAlchemy models, constraints, and foreign key RES
 from datetime import date, datetime, timezone
 import uuid
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, select
 from sqlalchemy.exc import IntegrityError
 
 from app.models.scheme import Scheme
@@ -223,3 +223,86 @@ def test_unique_document_type_constraint(db_session):
     with pytest.raises(IntegrityError, match="uq_scheme_documents_scheme_doc_type"):
         db_session.commit()
     db_session.rollback()
+
+
+def test_multiple_inactive_rule_versions_allowed(db_session):
+    """Partial unique index allows at most one active rule version; multiple inactive versions are allowed."""
+    scheme = _create_sample_scheme(db_session, code="INACTIVE-RULES-TEST")
+
+    v1 = SchemeRuleVersion(
+        id=uuid.uuid4(),
+        scheme_id=scheme.id,
+        version=1,
+        is_active=False,  # Inactive
+        eligibility_criteria={"field": "test_old_1"},
+        source_url="https://pmkisan.gov.in/",
+    )
+    v2 = SchemeRuleVersion(
+        id=uuid.uuid4(),
+        scheme_id=scheme.id,
+        version=2,
+        is_active=False,  # Also inactive
+        eligibility_criteria={"field": "test_old_2"},
+        source_url="https://pmkisan.gov.in/",
+    )
+    v3 = SchemeRuleVersion(
+        id=uuid.uuid4(),
+        scheme_id=scheme.id,
+        version=3,
+        is_active=True,  # The single active version
+        eligibility_criteria={"field": "test_current"},
+        source_url="https://pmkisan.gov.in/",
+    )
+    db_session.add_all([v1, v2, v3])
+    db_session.commit()
+
+    # Query all rule versions for this scheme
+    versions = db_session.scalars(
+        select(SchemeRuleVersion).where(SchemeRuleVersion.scheme_id == scheme.id).order_by(SchemeRuleVersion.version.asc())
+    ).all()
+    assert len(versions) == 3
+    assert versions[0].is_active is False
+    assert versions[1].is_active is False
+    assert versions[2].is_active is True
+
+
+def test_document_type_nonempty_check_constraint(db_session):
+    """Enforces ck_scheme_documents_type_nonempty: document_type cannot be empty or whitespace."""
+    # 1. Valid document_type succeeds
+    scheme1 = _create_sample_scheme(db_session, code="DOC-TYPE-VALID")
+    doc_valid = SchemeDocument(
+        id=uuid.uuid4(),
+        scheme_id=scheme1.id,
+        document_type="valid_doc",
+        title="Valid Document",
+    )
+    db_session.add(doc_valid)
+    db_session.commit()
+
+    # 2. Empty string is rejected
+    scheme2 = _create_sample_scheme(db_session, code="DOC-TYPE-EMPTY")
+    doc_empty = SchemeDocument(
+        id=uuid.uuid4(),
+        scheme_id=scheme2.id,
+        document_type="",
+        title="Empty Doc Type",
+    )
+    db_session.add(doc_empty)
+    with pytest.raises(IntegrityError, match="ck_scheme_documents_type_nonempty"):
+        db_session.commit()
+    db_session.rollback()
+
+    # 3. Whitespace-only string is rejected
+    scheme3 = _create_sample_scheme(db_session, code="DOC-TYPE-WS")
+    doc_whitespace = SchemeDocument(
+        id=uuid.uuid4(),
+        scheme_id=scheme3.id,
+        document_type="   ",
+        title="Whitespace Doc Type",
+    )
+    db_session.add(doc_whitespace)
+    with pytest.raises(IntegrityError, match="ck_scheme_documents_type_nonempty"):
+        db_session.commit()
+    db_session.rollback()
+
+

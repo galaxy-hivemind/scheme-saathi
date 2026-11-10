@@ -260,3 +260,4 @@ def test_detail_scheme_invalid_uuid_returns_422(client):
     token = _register_and_get_token(client, "scheme.user14@example.com")
     res = client.get("/api/v1/schemes/invalid-not-a-uuid", headers={"Authorization": f"Bearer {token}"})
     assert res.status_code == 422
+

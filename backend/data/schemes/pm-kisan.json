@@ -93,6 +93,9 @@
     }
   ],
   "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Core statutory eligibility conditions verified from Operational Guidelines; detailed exclusion categories (e.g. constitutional posts, institutional landholders) defined per guidelines.",
     "all": [
       {
         "field": "is_landholding_farmer",
@@ -144,3 +147,4 @@
     }
   ]
 }
+

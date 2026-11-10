@@ -256,3 +256,91 @@ def test_active_scheme_standard_enforcement():
             "last_verified_at": now,
             "source_evidence": unverified_claims,
         })
+
+
+def test_top_level_timestamp_validation_and_precedence():
+    """Verify top-level timestamps: timezone-awareness, UTC zero-offset, future rejection, and precedence."""
+    now_fixed = datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc)
+    verified_fixed = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
+
+    def make_evidence(claim: MaterialClaim) -> Dict[str, Any]:
+        return {
+            "claim": claim.value,
+            "statement": f"Statement for {claim.value}",
+            "source_url": "https://pmkisan.gov.in/guidelines.pdf",
+            "source_type": "guideline",
+            "issuing_authority": "MoA&FW",
+            "publication_date": "2024-01-01",
+            "retrieved_at": now_fixed.isoformat(),
+            "citation": "Official Circular",
+            "verification_status": "verified",
+            "verified_at": verified_fixed.isoformat(),
+        }
+
+    all_claims = [make_evidence(c) for c in MaterialClaim]
+
+    base_scheme = {
+        "scheme_code": "TEST-TIMESTAMP",
+        "name": "Timestamp Test Scheme",
+        "description": "Validating top-level timestamps with strict semantics",
+        "ministry": "Ministry of Finance",
+        "category": "social_security",
+        "geographic_scope": "central",
+        "target_beneficiaries": ["Citizens"],
+        "benefits": "Rs 5000 pension",
+        "source_url": "https://pmkisan.gov.in/guidelines.pdf",
+        "scheme_status": "active",
+        "source_evidence": all_claims,
+    }
+
+    # 1. Reject naive datetime for last_retrieved_at
+    with pytest.raises(ValidationError, match="last_retrieved_at must be timezone-aware UTC with zero offset"):
+        SchemeSeedSchema.model_validate({
+            **base_scheme,
+            "last_retrieved_at": datetime(2026, 11, 10, 10, 0),  # Naive
+            "last_verified_at": verified_fixed,
+        })
+
+    # 2. Reject non-zero UTC offset for last_retrieved_at
+    ist = timezone(timedelta(hours=5, minutes=30))
+    with pytest.raises(ValidationError, match="last_retrieved_at must have zero UTC offset"):
+        SchemeSeedSchema.model_validate({
+            **base_scheme,
+            "last_retrieved_at": datetime(2026, 11, 10, 15, 30, tzinfo=ist),
+            "last_verified_at": verified_fixed,
+        })
+
+    # 3. Reject future last_retrieved_at
+    future_time = datetime(2099, 1, 1, 0, 0, tzinfo=timezone.utc)
+    with pytest.raises(ValidationError, match="last_retrieved_at cannot be in the future"):
+        SchemeSeedSchema.model_validate({
+            **base_scheme,
+            "last_retrieved_at": future_time,
+            "last_verified_at": future_time,
+        })
+
+    # 4. Reject last_verified_at preceding last_retrieved_at
+    with pytest.raises(ValidationError, match="last_verified_at cannot precede last_retrieved_at"):
+        SchemeSeedSchema.model_validate({
+            **base_scheme,
+            "last_retrieved_at": datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc),
+            "last_verified_at": datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc),  # Preceding
+        })
+
+    # 5. Reject last_verified_at preceding any verified evidence timestamp
+    with pytest.raises(ValidationError, match="cannot precede verified evidence timestamp"):
+        SchemeSeedSchema.model_validate({
+            **base_scheme,
+            "last_retrieved_at": datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc),
+            "last_verified_at": datetime(2026, 11, 10, 11, 0, tzinfo=timezone.utc),  # Evidence has 12:00
+        })
+
+    # 6. Reject future last_verified_at
+    with pytest.raises(ValidationError, match="last_verified_at cannot be in the future"):
+        SchemeSeedSchema.model_validate({
+            **base_scheme,
+            "last_retrieved_at": now_fixed,
+            "last_verified_at": future_time,
+        })
+
+

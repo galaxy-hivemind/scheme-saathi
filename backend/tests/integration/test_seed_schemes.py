@@ -361,3 +361,249 @@ def test_omitted_document_soft_deactivation(db_session, temp_seed_dir):
 
     assert docs["aadhaar"].is_active is True
     assert docs["land_records"].is_active is False  # Soft-deactivated!
+
+
+def test_metadata_only_conflict_skips_aggregate(db_session, temp_seed_dir):
+    """Metadata-only conflict on verified scheme skips entire aggregate without --allow-override-verified."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Modify metadata only
+    seed["description"] = "Brand new modified description that differs from database"
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    summary = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert summary["skipped"] == 1
+    assert summary["updated"] == 0
+    assert summary["rule_versions_added"] == 0
+    assert summary["documents_updated"] == 0
+
+    db_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert db_scheme.description == "Test description of sufficient length for validation"
+
+
+def test_rule_only_conflict_skips_aggregate(db_session, temp_seed_dir):
+    """Rule-only conflict on verified scheme skips entire aggregate without --allow-override-verified."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Modify rule only
+    seed["eligibility_criteria"] = {"field": "changed_rule", "operator": "equals", "value": True}
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    summary = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert summary["skipped"] == 1
+    assert summary["updated"] == 0
+    assert summary["rule_versions_added"] == 0
+
+    # Old rule version remains active and untouched
+    rules = db_session.scalars(
+        select(SchemeRuleVersion).order_by(SchemeRuleVersion.version.asc())
+    ).all()
+    assert len(rules) == 1
+    assert rules[0].version == 1
+    assert rules[0].is_active is True
+    assert rules[0].eligibility_criteria["field"] == "is_farmer"
+
+
+def test_document_only_conflict_skips_aggregate(db_session, temp_seed_dir):
+    """Document-only conflict on verified scheme skips entire aggregate without --allow-override-verified."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Modify document guidance only
+    seed["required_documents"][0]["guidance"] = "Completely altered procurement guidance"
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    summary = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert summary["skipped"] == 1
+    assert summary["updated"] == 0
+    assert summary["documents_updated"] == 0
+
+    doc = db_session.scalar(
+        select(SchemeDocument).where(SchemeDocument.document_type == "aadhaar")
+    )
+    assert doc.guidance is None  # Remains unchanged (was not updated to the conflicting string)
+
+
+def test_document_omission_conflict_skips_aggregate(db_session, temp_seed_dir):
+    """Omission of document on verified scheme is treated as a conflict and skipped without override."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Omit land_records from seed
+    seed["required_documents"] = [seed["required_documents"][0]]
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    summary = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert summary["skipped"] == 1
+    assert summary["documents_deactivated"] == 0
+
+    # Document remains active in database
+    doc = db_session.scalar(
+        select(SchemeDocument).where(SchemeDocument.document_type == "land_records")
+    )
+    assert doc.is_active is True
+
+
+def test_no_override_entire_aggregate_remains_unchanged(db_session, temp_seed_dir):
+    """Full aggregate conflicts leave all parts of scheme untouched when override is omitted."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Change metadata, rule, and add document
+    seed["name"] = "Conflicting Name Change"
+    seed["eligibility_criteria"] = {"field": "new_rule"}
+    seed["required_documents"].append({
+        "document_type": "new_doc",
+        "title": "New Document",
+        "is_mandatory": True,
+    })
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    summary = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert summary["skipped"] == 1
+    assert summary["updated"] == 0
+    assert summary["rule_versions_added"] == 0
+    assert summary["documents_added"] == 0
+
+    db_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert db_scheme.name == "Test Kisan Scheme"
+    rules = db_session.scalars(select(SchemeRuleVersion).where(SchemeRuleVersion.scheme_id == db_scheme.id)).all()
+    assert len(rules) == 1
+    docs = db_session.scalars(select(SchemeDocument).where(SchemeDocument.scheme_id == db_scheme.id)).all()
+    assert len(docs) == 2
+
+
+def test_override_applies_intended_aggregate_changes(db_session, temp_seed_dir):
+    """With --allow-override-verified, all intended aggregate changes apply correctly."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Update metadata, rule, and add document with fresh verified timestamps
+    now = datetime.now(timezone.utc)
+    seed["name"] = "Updated Authorized Kisan Scheme"
+    seed["last_verified_at"] = now.isoformat()
+    for e in seed["source_evidence"]:
+        e["verified_at"] = now.isoformat()
+    seed["eligibility_criteria"] = {"field": "is_farmer", "operator": "equals", "value": True, "tier": 2}
+    seed["required_documents"].append({
+        "document_type": "voter_id",
+        "title": "Voter ID Card",
+        "is_mandatory": False,
+    })
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    summary = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=True,
+        session=db_session,
+    )
+    assert summary["updated"] == 1
+    assert summary["rule_versions_added"] == 1
+    assert summary["documents_added"] == 1
+
+    db_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert db_scheme.name == "Updated Authorized Kisan Scheme"
+    rules = db_session.scalars(select(SchemeRuleVersion).where(SchemeRuleVersion.scheme_id == db_scheme.id)).all()
+    assert len(rules) == 2
+    docs = db_session.scalars(select(SchemeDocument).where(SchemeDocument.scheme_id == db_scheme.id)).all()
+    assert len(docs) == 3
+
+
+def test_dry_run_reports_aggregate_changes_zero_dml(db_session, temp_seed_dir):
+    """Dry run with rule and document changes reports them in diffs with 0 DML statements."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    seed["eligibility_criteria"] = {"field": "new_test_rule"}
+    seed["required_documents"].append({
+        "document_type": "dry_run_doc",
+        "title": "Dry Run Doc",
+        "is_mandatory": True,
+    })
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    statements = []
+    def dml_listener(conn, cursor, statement, parameters, context, executemany):
+        upper = statement.strip().upper()
+        if any(upper.startswith(prefix) for prefix in ("INSERT", "UPDATE", "DELETE")):
+            statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", dml_listener)
+    try:
+        summary = execute_seed_import(
+            data_dir=temp_dir,
+            dry_run=True,
+            allow_override_verified=True,
+            session=db_session,
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", dml_listener)
+
+    assert len(statements) == 0, f"Dry-run executed DML: {statements}"
+    assert summary["updated"] == 1
+    assert summary["rule_versions_added"] == 1
+    assert summary["documents_added"] == 1
+    assert "TEST-PMK" in summary["diffs"]
+    assert summary["diffs"]["TEST-PMK"]["action"] == "UPDATE"
+
+
+def test_noop_reimport_zero_modifications(db_session, temp_seed_dir):
+    """Re-importing identical seed data produces zero modifications across entire aggregate."""
+    temp_dir, seed = temp_seed_dir
+    s1 = execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+    assert s1["added"] == 1
+
+    s2 = execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+    assert s2["added"] == 0
+    assert s2["updated"] == 0
+    assert s2["skipped"] == 0
+    assert s2["documents_updated"] == 0
+    assert s2["documents_added"] == 0
+    assert s2["documents_deactivated"] == 0
+    assert s2["rule_versions_added"] == 0
+    assert s2["diffs"]["TEST-PMK"]["action"] == "NOOP (Idempotent)"
+
+

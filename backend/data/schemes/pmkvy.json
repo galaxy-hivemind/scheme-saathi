@@ -93,6 +93,9 @@
     }
   ],
   "eligibility_criteria": {
+    "is_authoritative": false,
+    "is_provisional": true,
+    "limitations": "Provisional criteria; general trainee age criteria captured; specific course entry prerequisites and SIDH RPL criteria pending 2026 guidelines.",
     "all": [
       {
         "field": "age",
@@ -129,3 +132,4 @@
     }
   ]
 }
+

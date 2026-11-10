@@ -93,6 +93,9 @@
     }
   ],
   "eligibility_criteria": {
+    "is_authoritative": false,
+    "is_provisional": true,
+    "limitations": "Provisional criteria; entry age and non-taxpayer criteria verified under PFRDA master circular, but 2026 exit modalities and penalty rules pending operational verification.",
     "all": [
       {
         "field": "age",
@@ -134,3 +137,4 @@
     }
   ]
 }
+

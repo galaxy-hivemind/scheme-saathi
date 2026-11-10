@@ -93,6 +93,9 @@
     }
   ],
   "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Captures both universal senior citizen entitlement (70+) and SECC 2011 deprivation criteria under PIB PRID 2330009.",
     "any": [
       {
         "field": "age",
@@ -129,3 +132,4 @@
     }
   ]
 }
+

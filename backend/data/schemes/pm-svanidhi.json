@@ -93,6 +93,9 @@
     }
   ],
   "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Captures urban street vendor vending certificate/identification requirement as verified by MoHUA guidelines.",
     "all": [
       {
         "field": "is_street_vendor",
@@ -129,3 +132,4 @@
     }
   ]
 }
+

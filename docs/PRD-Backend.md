@@ -60,7 +60,7 @@ All Phase 2 requirements for the Government Scheme Catalogue, Data Management, a
    - Three core tables: `schemes`, `scheme_rule_versions`, `scheme_documents`.
    - Domain check constraints enforcing the 12 canonical categories (`ck_schemes_category`), `geographic_scope = 'central'` (`ck_schemes_geographic_scope`), and valid statuses (`ck_schemes_status`).
    - Foreign key constraints with `ON DELETE RESTRICT` on both child tables to prevent accidental deletion of scheme rules or document definitions.
-   - Non-redundant indexing with composite index `(scheme_status, category)` and a partial unique index `idx_rule_versions_active_unique` enforcing a single active rule version per scheme.
+   - Non-redundant indexing with composite index `(scheme_status, category)` and a partial unique index `uq_scheme_rule_versions_active` enforcing at most one active rule version per scheme (permitting zero or multiple inactive versions).
    - High-performance PostgreSQL GIN full-text search index (`idx_schemes_fts`) indexing `name`, `description`, `ministry`, `benefits`, and `target_beneficiaries` (`array_to_tsvector`).
    - Alembic migration `e7b2c419fa01` fully reversible with isolated schema migration tests.
 
