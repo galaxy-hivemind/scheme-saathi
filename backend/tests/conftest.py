@@ -118,6 +118,7 @@ def get_test_database_url() -> str:
                     conn.execute(text(create_role_stmt.as_string(raw_conn)))
                     conn.execute(text(grant_db_stmt.as_string(raw_conn)))
                     conn.execute(text(grant_schema_stmt.as_string(raw_conn)))
+                    conn.execute(text("REVOKE EXECUTE ON FUNCTION pg_control_system() FROM PUBLIC;"))
                     conn.commit()
 
                 # 2. Administratively provision sentinel inside disposable container

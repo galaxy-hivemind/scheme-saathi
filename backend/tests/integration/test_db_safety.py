@@ -88,9 +88,11 @@ import sys
 import uuid
 import pytest
 from sqlalchemy import create_engine, text, inspect, MetaData, Table, Column, Integer
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ProgrammingError, OperationalError
 
 from app.core.config import settings
+import app.core.db_safety as db_safety_mod
 from app.core.db_safety import (
     DatabaseIdentity,
     SentinelRecord,
@@ -2555,6 +2557,223 @@ def test_63_testcontainers_provisioning_failure_cleans_up_container(monkeypatch)
     assert dummy.stopped is True, "Started container was not stopped on provisioning failure!"
     assert conftest_mod._test_container is None
     assert conftest_mod._container_runtime_url is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 13: FAIL-CLOSED PRIVILEGE PROVISIONING & APPLICATION DB ISOLATION MODEL
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_64_privilege_revocation_failure_fails_closed_without_leaking_credentials(monkeypatch):
+    """
+    Requirement 1: A failed mandatory privilege-revocation operation must not be silently ignored.
+    If revocation fails, setup_test_roles must fail immediately with RuntimeError without leaking credentials.
+    """
+    admin_url = get_admin_url()
+    temp_role = f"test_role_failrev_{uuid.uuid4().hex[:6]}"
+    secret_password = "super_secret_test_password_xyz_987"
+
+    orig_create_engine = db_safety_mod.create_engine
+
+    def mock_create_engine(url, *args, **kwargs):
+        eng = orig_create_engine(url, *args, **kwargs)
+        orig_connect = eng.connect
+
+        def mock_connect(*c_args, **c_kwargs):
+            conn = orig_connect(*c_args, **c_kwargs)
+            orig_exec = conn.execute
+
+            def mock_execute(stmt, *e_args, **e_kwargs):
+                sql_str = str(stmt)
+                if "REVOKE EXECUTE ON FUNCTION pg_control_system()" in sql_str:
+                    raise OperationalError(
+                        f"Simulated revocation failure with {secret_password}",
+                        params=None,
+                        orig=Exception(f"permission denied with password={secret_password}"),
+                    )
+                return orig_exec(stmt, *e_args, **e_kwargs)
+
+            conn.execute = mock_execute
+            return conn
+
+        eng.connect = mock_connect
+        return eng
+
+    monkeypatch.setattr(db_safety_mod, "create_engine", mock_create_engine)
+
+    try:
+        with pytest.raises(RuntimeError) as exc_info:
+            setup_test_roles(admin_url, test_role=temp_role, test_password=secret_password)
+
+        err_msg = str(exc_info.value)
+        assert "unable to revoke EXECUTE on pg_control_system()" in err_msg
+        assert secret_password not in err_msg, "Sensitive password was leaked in exception error message!"
+    finally:
+        try:
+            with orig_create_engine(admin_url).connect() as clean_conn:
+                clean_conn.execute(text(f'DROP ROLE IF EXISTS "{temp_role}";'))
+                clean_conn.commit()
+        except Exception:
+            pass
+
+
+def test_65_independent_verification_of_both_test_databases():
+    """
+    Requirement 1.3: Verify the resulting privileges independently against both:
+    - scheme_saathi_test
+    - scheme_saathi_migration_test
+    """
+    admin_url = get_admin_url()
+    for test_db in ["scheme_saathi_test", "scheme_saathi_migration_test"]:
+        db_url = make_url(admin_url).set(database=test_db)
+        eng = create_engine(db_url)
+        try:
+            with eng.connect() as conn:
+                has_func_priv = conn.execute(
+                    text("SELECT has_function_privilege(:role, 'pg_control_system()', 'execute');"),
+                    {"role": TEST_RUNTIME_ROLE},
+                ).scalar()
+                assert has_func_priv is False, (
+                    f"Security failure: Role '{TEST_RUNTIME_ROLE}' retains EXECUTE privilege on "
+                    f"pg_control_system() in database '{test_db}'!"
+                )
+        finally:
+            eng.dispose()
+
+
+def test_66_runtime_role_cannot_query_system_identifier():
+    """
+    Requirement 1.4: Verify the actual runtime role cannot access the protected cluster identifier.
+    Queries to pg_control_system() must fail with InsufficientPrivilege / PermissionDenied.
+    """
+    pwd = os.getenv("TEST_DB_PASSWORD")
+    if not pwd:
+        pytest.skip("TEST_DB_PASSWORD required for runtime role check")
+
+    for test_db in ["scheme_saathi_test", "scheme_saathi_migration_test"]:
+        test_url = f"postgresql://{TEST_RUNTIME_ROLE}:{pwd}@localhost:5432/{test_db}"
+        eng = create_engine(test_url)
+        try:
+            with pytest.raises((ProgrammingError, OperationalError)) as exc_info:
+                with eng.connect() as conn:
+                    conn.execute(text("SELECT system_identifier FROM pg_control_system();"))
+
+            err_text = str(exc_info.value).lower()
+            assert "permission denied" in err_text or "42501" in err_text, (
+                f"Expected permission denied for pg_control_system in '{test_db}', got: {exc_info.value}"
+            )
+        finally:
+            eng.dispose()
+
+
+def test_67_application_database_privilege_and_connection_isolation_model():
+    """
+    Requirement 2: Database CONNECT restriction and isolation model.
+    1. Establish what effective CONNECT privileges the runtime role actually has:
+       Because PUBLIC retains CONNECT by default, has_database_privilege evaluates to True.
+    2. Account for privileges inherited through PUBLIC:
+       Direct privileges are revoked, but PUBLIC retains CONNECT.
+    3. Distinguish database ACL restrictions from login-time configuration failures:
+       Connection refusal is enforced via session_preload_libraries in pg_db_role_setting.
+    4. Verify actual connection attempt fails fatally at session startup.
+    """
+    admin_url = get_admin_url()
+    admin_eng = create_engine(admin_url)
+    try:
+        with admin_eng.connect() as conn:
+            # Check effective CONNECT privilege via PUBLIC inheritance
+            has_role_connect = conn.execute(
+                text("SELECT has_database_privilege(:role, 'scheme_saathi', 'CONNECT');"),
+                {"role": TEST_RUNTIME_ROLE},
+            ).scalar()
+            has_public_connect = conn.execute(
+                text("SELECT has_database_privilege('public', 'scheme_saathi', 'CONNECT');")
+            ).scalar()
+            assert has_role_connect is True, "Expected True via PUBLIC inheritance"
+            assert has_public_connect is True, "PUBLIC must retain default CONNECT"
+
+            # Check that session_preload_libraries lockout is active in pg_db_role_setting
+            lockout_applied = conn.execute(
+                text("""
+                    SELECT exists(
+                        SELECT 1
+                        FROM pg_db_role_setting s
+                        JOIN pg_database d ON d.oid = s.setdatabase
+                        JOIN pg_roles r ON r.oid = s.setrole
+                        WHERE d.datname = 'scheme_saathi' AND r.rolname = :role
+                          AND 'session_preload_libraries=nonexistent_lib' = ANY(s.setconfig)
+                    );
+                """),
+                {"role": TEST_RUNTIME_ROLE},
+            ).scalar()
+            assert lockout_applied is True, "session_preload_libraries lockout missing from pg_db_role_setting!"
+    finally:
+        admin_eng.dispose()
+
+    # Verify actual connection attempt fails with FATAL session refusal
+    pwd = os.getenv("TEST_DB_PASSWORD")
+    if not pwd:
+        pytest.skip("TEST_DB_PASSWORD required for connection check")
+
+    app_conn_url = f"postgresql://{TEST_RUNTIME_ROLE}:{pwd}@localhost:5432/scheme_saathi"
+    app_eng = create_engine(app_conn_url)
+    try:
+        with pytest.raises(OperationalError) as exc_info:
+            with app_eng.connect() as conn:
+                conn.execute(text("SELECT 1;"))
+        err_text = str(exc_info.value)
+        assert "FATAL" in err_text or "could not access file" in err_text or "connection to server" in err_text
+    finally:
+        app_eng.dispose()
+
+
+def test_68_unavailable_catalog_verification_fails_closed_in_gateways(monkeypatch):
+    """
+    Requirement 1.5: Verify that unavailable catalog verification causes execution gateways to fail closed.
+    If live catalog verification queries raise an unexpected catalog error,
+    all DDL gateways abort and reject execution.
+    """
+    engine = create_engine(TEST_DATABASE_URL)
+    test_meta = MetaData()
+
+    orig_connect = engine.connect
+
+    def mock_connect(*args, **kwargs):
+        conn = orig_connect(*args, **kwargs)
+        orig_exec = conn.execute
+
+        def mock_exec(stmt, *e_args, **e_kwargs):
+            s = str(stmt)
+            if "FROM pg_roles" in s or "FROM pg_auth_members" in s:
+                raise OperationalError("Catalog unavailable", params=None, orig=Exception("catalog query error"))
+            return orig_exec(stmt, *e_args, **e_kwargs)
+
+        conn.execute = mock_exec
+        return conn
+
+    monkeypatch.setattr(engine, "connect", mock_connect)
+
+    try:
+        with pytest.raises(Exception):
+            safe_drop_all(
+                engine,
+                test_meta,
+                TEST_DATABASE_URL,
+                settings.DATABASE_URL,
+                expected_role=TEST_RUNTIME_ROLE,
+            )
+
+        with pytest.raises(Exception):
+            safe_create_all(
+                engine,
+                test_meta,
+                TEST_DATABASE_URL,
+                settings.DATABASE_URL,
+                expected_role=TEST_RUNTIME_ROLE,
+            )
+    finally:
+        engine.dispose()
+
 
 
 

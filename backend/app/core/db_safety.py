@@ -106,6 +106,19 @@ def mask_url_password(url_str: str) -> str:
         return "[unparseable-url]"
 
 
+def mask_credentials_in_text(text_content: str, sensitive_strings: Any = None) -> str:
+    """Mask any embedded passwords or connection credentials in error messages."""
+    import re
+    s = re.sub(r"://([^:]+):([^@]+)@", r"://\1:***@", str(text_content))
+    s = re.sub(r"password=['\"][^'\"]+['\"]", "password='***'", s, flags=re.IGNORECASE)
+    s = re.sub(r"password=[^\s,;'\"]+", "password=***", s, flags=re.IGNORECASE)
+    if sensitive_strings:
+        for secret in sensitive_strings:
+            if secret and len(str(secret)) > 2:
+                s = s.replace(str(secret), "***")
+    return s
+
+
 @dataclass
 class DatabaseIdentity:
     """Represents the physical identity and diagnostic status of a PostgreSQL database."""
@@ -296,12 +309,23 @@ def setup_test_roles(
     - Never modifies PUBLIC permissions on scheme_saathi or any database.
     - Explicitly establishes intended role attributes: LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS.
     - Inspects and removes any administrative or unsafe role memberships (pg_auth_members).
-    - Revokes CONNECT and privileges on application database (scheme_saathi) specifically for test_role.
-    - Sets session_preload_libraries on scheme_saathi for test_role to guarantee connection refusal.
-    - Verifies that session_preload_libraries is actually applied in pg_db_role_setting.
-    - Grants connect and DDL rights on disposable test databases.
+    - Database ACL & Connection Isolation Model for the Application Database ('scheme_saathi'):
+      * Direct role privileges on scheme_saathi are revoked (REVOKE ALL, REVOKE CONNECT).
+      * However, in PostgreSQL, the PUBLIC pseudo-role retains CONNECT privilege by default,
+        which means has_database_privilege(role, 'scheme_saathi', 'CONNECT') evaluates to True
+        via PUBLIC inheritance unless PUBLIC is altered (which is forbidden to protect shared DBs).
+      * To ensure true fail-closed isolation without altering PUBLIC, connection establishment by the
+        test role to 'scheme_saathi' is unconditionally rejected at server session initialization via
+        per-database role configuration:
+        ALTER ROLE <test_role> IN DATABASE scheme_saathi SET session_preload_libraries = 'nonexistent_lib';
+      * PostgreSQL aborts session startup with a FATAL error before authentication completes or any queries can run.
+      * Application safety gates (validate_database_target, verify_connection_isolation) verify that
+        current_database() never equals the application database name under any alias, scheme, or proxy endpoint.
+    - Revokes EXECUTE on pg_control_system() from PUBLIC across all test databases to enforce catalog isolation.
+    - Independently verifies restricted privileges against both scheme_saathi_test and scheme_saathi_migration_test.
+    - Verifies the actual runtime role cannot access the protected cluster identifier.
     - Parameterized and validated SQL prevents SQL injection.
-    - Explicitly fails if credentials are missing or grants cannot be applied.
+    - Explicitly fails immediately if credentials are missing or mandatory privilege revocations fail.
     """
     validated_role = validate_pg_identifier(test_role, "test role name")
     password = test_password if test_password is not None else os.getenv("TEST_DB_PASSWORD")
@@ -411,10 +435,15 @@ def setup_test_roles(
         conn.execute(text(f'REVOKE ALL ON DATABASE "{app_db}" FROM "{validated_role}";'))
         conn.execute(text(f'REVOKE CONNECT ON DATABASE "{app_db}" FROM "{validated_role}";'))
         conn.execute(text(f"ALTER ROLE \"{validated_role}\" IN DATABASE \"{app_db}\" SET session_preload_libraries = 'nonexistent_lib';"))
+
+        # Revoke EXECUTE on pg_control_system() from PUBLIC in the connected administrative database
         try:
             conn.execute(text("REVOKE EXECUTE ON FUNCTION pg_control_system() FROM PUBLIC;"))
-        except Exception:
-            pass
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to establish required security invariant: unable to revoke EXECUTE on "
+                f"pg_control_system() from PUBLIC in administrative database: {mask_credentials_in_text(str(e), [clean_password])}"
+            )
 
         # 5. Verify that the session_preload_libraries setting was actually applied
         setting_applied = conn.execute(
@@ -433,23 +462,35 @@ def setup_test_roles(
         if not setting_applied:
             raise RuntimeError(f"Failed to apply session_preload_libraries lockout on database '{app_db}' for role '{validated_role}'.")
 
-        # 6. Grant necessary privileges on disposable test databases
-        for test_db, needs_schema_create in [("scheme_saathi_test", False), ("scheme_saathi_migration_test", True)]:
+        # 6. Grant necessary privileges and revoke pg_control_system() in disposable test databases
+        test_databases = [("scheme_saathi_test", False), ("scheme_saathi_migration_test", True)]
+        for test_db, needs_schema_create in test_databases:
             db_exists = conn.execute(
                 text("SELECT exists(SELECT 1 FROM pg_database WHERE datname = :db)"),
                 {"db": test_db},
             ).scalar()
-            if db_exists:
-                conn.execute(text(f'GRANT CONNECT, TEMPORARY ON DATABASE "{test_db}" TO "{validated_role}";'))
-                if needs_schema_create:
-                    conn.execute(text(f'GRANT CREATE ON DATABASE "{test_db}" TO "{validated_role}";'))
-                try:
-                    target_admin_url = make_url(admin_url).set(database=test_db)
-                    with create_engine(target_admin_url).connect() as db_conn:
-                        db_conn.execute(text("REVOKE EXECUTE ON FUNCTION pg_control_system() FROM PUBLIC;"))
-                        db_conn.commit()
-                except Exception:
-                    pass
+            if not db_exists:
+                raise RuntimeError(
+                    f"Required test database '{test_db}' does not exist. "
+                    f"Please create database '{test_db}' before running setup-roles."
+                )
+
+            conn.execute(text(f'GRANT CONNECT, TEMPORARY ON DATABASE "{test_db}" TO "{validated_role}";'))
+            if needs_schema_create:
+                conn.execute(text(f'GRANT CREATE ON DATABASE "{test_db}" TO "{validated_role}";'))
+
+            target_admin_url = make_url(admin_url).set(database=test_db)
+            try:
+                db_engine = create_engine(target_admin_url)
+                with db_engine.connect() as db_conn:
+                    db_conn.execute(text("REVOKE EXECUTE ON FUNCTION pg_control_system() FROM PUBLIC;"))
+                    db_conn.commit()
+                db_engine.dispose()
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to establish required security invariant: unable to revoke EXECUTE on "
+                    f"pg_control_system() from PUBLIC in database '{test_db}': {mask_credentials_in_text(str(e), [clean_password])}"
+                )
 
         conn.commit()
 
@@ -489,6 +530,54 @@ def setup_test_roles(
         if final_members:
             rem = [r["rolname"] for r in final_members]
             raise RuntimeError(f"Security verification failed: role '{validated_role}' retains unexpected memberships: {rem}.")
+
+    # 8. Independent Verification Against Both Test Databases
+    for test_db, _ in test_databases:
+        target_admin_url = make_url(admin_url).set(database=test_db)
+        try:
+            admin_db_engine = create_engine(target_admin_url)
+            with admin_db_engine.connect() as db_conn:
+                has_func_priv = db_conn.execute(
+                    text("SELECT has_function_privilege(:role, 'pg_control_system()', 'execute');"),
+                    {"role": validated_role},
+                ).scalar()
+                if has_func_priv:
+                    raise RuntimeError(
+                        f"Security verification failed: role '{validated_role}' retains EXECUTE privilege "
+                        f"on pg_control_system() in database '{test_db}'."
+                    )
+            admin_db_engine.dispose()
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(
+                f"Security verification failed: unable to verify function privileges in database '{test_db}': {mask_credentials_in_text(str(e), [clean_password])}"
+            )
+
+        # 9. Verify the actual runtime role cannot access pg_control_system()
+        test_user_url = make_url(admin_url).set(
+            username=validated_role,
+            password=clean_password,
+            database=test_db,
+        )
+        try:
+            user_db_engine = create_engine(test_user_url)
+            with user_db_engine.connect() as user_conn:
+                user_conn.execute(text("SELECT system_identifier FROM pg_control_system();"))
+                raise RuntimeError(
+                    f"Security invariant violated: runtime role '{validated_role}' was able to query "
+                    f"pg_control_system() in database '{test_db}'."
+                )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            err_text = str(e).lower()
+            if "permission denied" not in err_text and "42501" not in err_text:
+                raise RuntimeError(
+                    f"Unexpected error when verifying runtime role access in database '{test_db}': {mask_credentials_in_text(str(e), [clean_password])}"
+                )
+        finally:
+            user_db_engine.dispose()
 
     engine.dispose()
 

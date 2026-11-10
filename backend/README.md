@@ -88,7 +88,12 @@ USE_TESTCONTAINERS=1 ALLOW_TEST_DB_RESET=1 pytest tests/integration/test_databas
 When running against a local PostgreSQL instance, the test runner enforces strict database and role-level isolation:
 
 1. **Dedicated Test Runtime Role (`scheme_saathi_test_user`):**
-   - Has **NO CONNECT privilege** on the application database (`scheme_saathi`), enforced via `session_preload_libraries = 'nonexistent_lib'`.
+   - Direct database privileges on the application database (`scheme_saathi`) are completely revoked (`REVOKE ALL ON DATABASE scheme_saathi`).
+   - In standard PostgreSQL, `PUBLIC` retains `CONNECT` privilege on databases by default, which means `has_database_privilege(role, 'scheme_saathi', 'CONNECT')` evaluates to `True` via inheritance (preserving general PostgreSQL functionality across unrelated roles and databases).
+   - Application database isolation is enforced through defense-in-depth:
+     a. Session startup is blocked at the database engine level via `ALTER ROLE scheme_saathi_test_user IN DATABASE scheme_saathi SET session_preload_libraries = 'nonexistent_lib'`, which causes the PostgreSQL server backend process to abort initialization (`FATAL`) immediately upon connection authentication.
+     b. DDL gateway and target verification (`validate_database_target`, `verify_connection_isolation`) actively check `current_database() != 'scheme_saathi'` and fail closed if an application target is provided.
+     c. Public execution of the physical cluster identifier (`pg_control_system()`) is explicitly revoked from `PUBLIC` so unprivileged roles cannot query cluster identifiers across databases.
    - Has only **SELECT-only** access on the in-database sentinel (`_scheme_saathi_db_sentinel`).
    - The test runner **cannot** insert, update, delete, or recreate the sentinel table (`permission denied`).
    - The test runner **never** auto-provisions sentinels; a missing sentinel causes immediate failure.
