@@ -52,7 +52,25 @@ PROTECTED_FIELDS = [
     "source_url",
     "source_evidence",
     "scheme_status",
+    "last_retrieved_at",
+    "last_verified_at",
 ]
+
+
+def normalize_datetime(dt: Any) -> Optional[datetime]:
+    """Normalize datetime to timezone-aware UTC for robust timestamp comparisons."""
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        except Exception:
+            return None
+    if isinstance(dt, datetime):
+        if dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=timezone.utc)
+    return None
 
 
 def load_and_prevalidate_seed_files(data_dir: Path) -> List[SchemeSeedSchema]:
@@ -123,6 +141,11 @@ def compute_aggregate_diff(
             new_evidence_dict = [e.model_dump(mode="json") for e in seed.source_evidence]
             if old_val != new_evidence_dict:
                 metadata_diff[field] = (old_val, new_evidence_dict)
+        elif field in ("last_retrieved_at", "last_verified_at"):
+            norm_old = normalize_datetime(old_val)
+            norm_new = normalize_datetime(new_val)
+            if norm_old != norm_new:
+                metadata_diff[field] = (old_val, new_val)
         elif old_val != new_val:
             metadata_diff[field] = (old_val, new_val)
 
@@ -224,6 +247,11 @@ def compute_scheme_diff(existing: Scheme, incoming: SchemeSeedSchema) -> Dict[st
             new_evidence_dict = [e.model_dump(mode="json") for e in incoming.source_evidence]
             if old_val != new_evidence_dict:
                 diff[field] = (old_val, new_evidence_dict)
+        elif field in ("last_retrieved_at", "last_verified_at"):
+            norm_old = normalize_datetime(old_val)
+            norm_new = normalize_datetime(new_val)
+            if norm_old != norm_new:
+                diff[field] = (old_val, new_val)
         elif old_val != new_val:
             diff[field] = (old_val, new_val)
 
@@ -312,8 +340,9 @@ def execute_seed_import(
             logger.info("Dry-run plan computation completed successfully.")
             return summary
 
-        # 2. Normal Import Phase: Open single atomic transaction
-        with session.begin():
+        # 2. Normal Import Phase: Open single atomic transaction (or nested transaction if session already open)
+        tx_context = session.begin_nested() if session.in_transaction() else session.begin()
+        with tx_context:
             for seed in seeds:
                 existing = session.scalar(select(Scheme).where(Scheme.scheme_code == seed.scheme_code))
 
@@ -432,17 +461,22 @@ def execute_seed_import(
                             existing.source_evidence = [e.model_dump(mode="json") for e in seed.source_evidence]
                             existing.last_retrieved_at = seed.last_retrieved_at
 
-                            if has_fresh_verified:
+                            if seed.scheme_status == SchemeStatus.INACTIVE:
+                                existing.scheme_status = SchemeStatus.INACTIVE.value
+                                existing.last_verified_at = None
+                            elif seed.scheme_status == SchemeStatus.ACTIVE and all(
+                                e.verification_status == VerificationStatus.VERIFIED for e in seed.source_evidence
+                            ):
                                 existing.scheme_status = SchemeStatus.ACTIVE.value
                                 existing.last_verified_at = seed.last_verified_at
                             else:
+                                if existing.scheme_status == SchemeStatus.ACTIVE.value:
+                                    summary["demoted_to_pending"] += 1
+                                    logger.info(
+                                        f"Scheme '{seed.scheme_code}' demoted from active to pending_verification."
+                                    )
                                 existing.scheme_status = SchemeStatus.PENDING_VERIFICATION.value
                                 existing.last_verified_at = None
-                                summary["demoted_to_pending"] += 1
-                                logger.info(
-                                    f"Scheme '{seed.scheme_code}' updated with incomplete/unverified evidence; "
-                                    f"set to pending_verification and last_verified_at cleared."
-                                )
 
                         # 2. Reconcile Rule Versions if rule_diff
                         if agg_diff["rule_diff"]:

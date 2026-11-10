@@ -607,3 +607,194 @@ def test_noop_reimport_zero_modifications(db_session, temp_seed_dir):
     assert s2["diffs"]["TEST-PMK"]["action"] == "NOOP (Idempotent)"
 
 
+def test_active_to_inactive_transition_requires_override(db_session, temp_seed_dir):
+    """
+    Verifies active -> inactive transition in seed importer:
+    1. Seed an active scheme and confirm scheme_status is 'active' and last_verified_at is set.
+    2. Attempt update to 'inactive' (and last_verified_at=None) with allow_override_verified=False -> skipped!
+    3. Update to 'inactive' with allow_override_verified=True -> updated!
+    4. Confirm DB scheme_status is 'inactive' and last_verified_at is None.
+    """
+    temp_dir, seed = temp_seed_dir
+    res1 = execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+    assert res1["added"] == 1
+
+    scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert scheme.scheme_status == "active"
+    assert scheme.last_verified_at is not None
+
+    # Update seed to inactive
+    seed["scheme_status"] = "inactive"
+    seed["last_verified_at"] = None
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    # 1. Without allow_override_verified -> skipped
+    res_skip = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert res_skip["skipped"] == 1
+    assert res_skip["updated"] == 0
+
+    db_session.expire_all()
+    unchanged_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert unchanged_scheme.scheme_status == "active"
+    assert unchanged_scheme.last_verified_at is not None
+
+    # 2. With allow_override_verified -> updated
+    res_update = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=True,
+        session=db_session,
+    )
+    assert res_update["updated"] == 1
+    assert res_update["skipped"] == 0
+
+    db_session.expire_all()
+    updated_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert updated_scheme.scheme_status == "inactive"
+    assert updated_scheme.last_verified_at is None
+
+
+def test_retrieval_only_timestamp_change_requires_override(db_session, temp_seed_dir):
+    """Changing only last_retrieved_at is detected in aggregate diff and requires override on verified schemes."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    original_retrieved = scheme.last_retrieved_at
+
+    # New retrieval timestamp (10 minutes earlier than verification)
+    new_retrieved = original_retrieved - timedelta(minutes=10)
+    seed["last_retrieved_at"] = new_retrieved.isoformat()
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    # 1. Without allow_override_verified -> skipped
+    res_skip = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert res_skip["skipped"] == 1
+    assert res_skip["updated"] == 0
+    assert "last_retrieved_at" in res_skip["diffs"]["TEST-PMK"]["conflicts"]["metadata"]
+
+    db_session.expire_all()
+    unchanged_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert unchanged_scheme.last_retrieved_at == original_retrieved
+
+    # 2. With allow_override_verified -> updated
+    res_update = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=True,
+        session=db_session,
+    )
+    assert res_update["updated"] == 1
+    assert res_update["skipped"] == 0
+
+    db_session.expire_all()
+    updated_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert updated_scheme.last_retrieved_at == new_retrieved
+
+
+def test_verification_only_timestamp_change_requires_override(db_session, temp_seed_dir):
+    """Changing only last_verified_at is detected in aggregate diff and requires override on verified schemes."""
+    temp_dir, seed = temp_seed_dir
+    base_time = datetime.now(timezone.utc)
+    t_retrieved = base_time - timedelta(hours=2)
+    t_verified_1 = base_time - timedelta(hours=1)
+    seed["last_retrieved_at"] = t_retrieved.isoformat()
+    seed["last_verified_at"] = t_verified_1.isoformat()
+    for ev in seed["source_evidence"]:
+        ev["retrieved_at"] = t_retrieved.isoformat()
+        ev["verified_at"] = t_verified_1.isoformat()
+
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Advance only last_verified_at (30 mins after retrieved)
+    t_verified_2 = base_time - timedelta(minutes=30)
+    seed["last_verified_at"] = t_verified_2.isoformat()
+    for ev in seed["source_evidence"]:
+        ev["verified_at"] = t_verified_2.isoformat()
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    # 1. Without allow_override_verified -> skipped
+    res_skip = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=False,
+        session=db_session,
+    )
+    assert res_skip["skipped"] == 1
+    assert res_skip["updated"] == 0
+    assert "last_verified_at" in res_skip["diffs"]["TEST-PMK"]["conflicts"]["metadata"]
+
+    db_session.expire_all()
+    unchanged_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert unchanged_scheme.last_verified_at == t_verified_1
+
+    # 2. With allow_override_verified -> updated
+    res_update = execute_seed_import(
+        data_dir=temp_dir,
+        dry_run=False,
+        allow_override_verified=True,
+        session=db_session,
+    )
+    assert res_update["updated"] == 1
+    assert res_update["skipped"] == 0
+
+    db_session.expire_all()
+    updated_scheme = db_session.scalar(select(Scheme).where(Scheme.scheme_code == "TEST-PMK"))
+    assert updated_scheme.last_verified_at == t_verified_2
+
+
+def test_unchanged_timestamps_produce_idempotent_noop(db_session, temp_seed_dir):
+    """Re-importing with unchanged provenance timestamps produces NOOP."""
+    temp_dir, seed = temp_seed_dir
+    s1 = execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+    assert s1["added"] == 1
+
+    s2 = execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+    assert s2["added"] == 0
+    assert s2["updated"] == 0
+    assert s2["skipped"] == 0
+    assert s2["diffs"]["TEST-PMK"]["action"] == "NOOP (Idempotent)"
+
+
+def test_equivalent_utc_timestamps_do_not_produce_false_conflicts(db_session, temp_seed_dir):
+    """Equivalent UTC timestamps with differing string representations (Z vs +00:00) produce NOOP."""
+    temp_dir, seed = temp_seed_dir
+    execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+
+    # Format timestamps with explicit +00:00 instead of Z while preserving full ISO precision
+    dt_retrieved = datetime.fromisoformat(seed["last_retrieved_at"].replace("Z", "+00:00"))
+    dt_verified = datetime.fromisoformat(seed["last_verified_at"].replace("Z", "+00:00"))
+    seed["last_retrieved_at"] = dt_retrieved.isoformat()
+    seed["last_verified_at"] = dt_verified.isoformat()
+
+    file_path = temp_dir / "test-scheme.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(seed, f)
+
+    res = execute_seed_import(data_dir=temp_dir, dry_run=False, session=db_session)
+    assert res["updated"] == 0
+    assert res["skipped"] == 0
+    assert res["diffs"]["TEST-PMK"]["action"] == "NOOP (Idempotent)"
+
+
+

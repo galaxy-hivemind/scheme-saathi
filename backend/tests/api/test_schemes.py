@@ -14,6 +14,11 @@ from tests.api.test_profile import _register_and_get_token
 @pytest.fixture
 def seeded_db(db_session):
     """Seed the database with the official 7 curated scheme seed files."""
+    from sqlalchemy import text
+    db_session.execute(text("DELETE FROM scheme_documents;"))
+    db_session.execute(text("DELETE FROM scheme_rule_versions;"))
+    db_session.execute(text("DELETE FROM schemes;"))
+    db_session.commit()
     data_dir = Path(__file__).resolve().parent.parent.parent / "data" / "schemes"
     execute_seed_import(data_dir=data_dir, dry_run=False, session=db_session)
     return db_session
@@ -275,6 +280,7 @@ def test_detail_scheme_invalid_uuid_returns_422(client):
 def test_detail_scheme_malformed_evidence_raises_500(client, db_session):
     """Malformed persisted source_evidence raises 500 and does NOT silently omit entries."""
     from datetime import datetime, timezone
+    from sqlalchemy import text
     from app.models.scheme import Scheme
 
     token = _register_and_get_token(client, "scheme.malformed@example.com")
@@ -298,11 +304,65 @@ def test_detail_scheme_malformed_evidence_raises_500(client, db_session):
             {"claim": "non_existent_claim", "statement": "Invalid"}  # Missing required fields: source_url, retrieved_at, etc.
         ],
     )
-    db_session.add(bad_scheme)
-    db_session.commit()
+    try:
+        db_session.add(bad_scheme)
+        db_session.commit()
 
-    res = client.get(f"/api/v1/schemes/{bad_scheme.id}", headers={"Authorization": f"Bearer {token}"})
-    assert res.status_code == 500
-    assert "Data integrity error" in res.json()["detail"]
+        res = client.get(f"/api/v1/schemes/{bad_scheme.id}", headers={"Authorization": f"Bearer {token}"})
+        assert res.status_code == 500
+        assert "Data integrity error" in res.json()["detail"]
+    finally:
+        db_session.execute(text("DELETE FROM schemes WHERE scheme_code = 'BAD-EVIDENCE-SCHEME'"))
+        db_session.execute(text("DELETE FROM users WHERE email = 'scheme.malformed@example.com'"))
+        db_session.commit()
+
+
+def test_inactive_scheme_hidden_from_list_and_detail_api(client, seeded_db):
+    """Inactive schemes are hidden from default list, include_pending list, and detail API."""
+    from sqlalchemy import select
+    from app.models.scheme import Scheme
+
+    token = _register_and_get_token(client, "scheme.inactive@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Temporarily mark PM-SVANIDHI as inactive in DB
+    scheme = seeded_db.scalar(select(Scheme).where(Scheme.scheme_code == "PM-SVANIDHI"))
+    assert scheme is not None
+    original_status = scheme.scheme_status
+    original_verified = scheme.last_verified_at
+
+    try:
+        scheme.scheme_status = "inactive"
+        scheme.last_verified_at = None
+        seeded_db.commit()
+
+        # 1. Default list returns only 3 active schemes (PM-KISAN, PMAY-U, AB-PMJAY)
+        list_res = client.get("/api/v1/schemes", headers=headers)
+        assert list_res.status_code == 200
+        active_codes = {item["scheme_code"] for item in list_res.json()["data"]["items"]}
+        assert active_codes == {"PM-KISAN", "PMAY-U", "AB-PMJAY"}
+        assert "PM-SVANIDHI" not in active_codes
+
+        # 2. List with include_pending=true returns active + pending (6 schemes), excluding inactive
+        pending_res = client.get("/api/v1/schemes?include_pending=true", headers=headers)
+        assert pending_res.status_code == 200
+        all_codes = {item["scheme_code"] for item in pending_res.json()["data"]["items"]}
+        assert all_codes == {"PM-KISAN", "PMAY-U", "AB-PMJAY", "PMUY", "APY", "PMKVY"}
+        assert "PM-SVANIDHI" not in all_codes
+
+        # 3. Detail endpoint returns 404 for inactive scheme
+        detail_res = client.get(f"/api/v1/schemes/{scheme.id}", headers=headers)
+        assert detail_res.status_code == 404
+        assert detail_res.json()["detail"] == "Scheme not found"
+
+        # 4. Detail endpoint with include_pending=true STILL returns 404 for inactive scheme
+        detail_pending_res = client.get(f"/api/v1/schemes/{scheme.id}?include_pending=true", headers=headers)
+        assert detail_pending_res.status_code == 404
+        assert detail_pending_res.json()["detail"] == "Scheme not found"
+    finally:
+        scheme.scheme_status = original_status
+        scheme.last_verified_at = original_verified
+        seeded_db.commit()
+
 
 
