@@ -3,6 +3,7 @@ Unit tests for Scheme Pydantic schemas, evidence validation, and constraints.
 Runs with zero database dependencies.
 """
 from datetime import date, datetime, timezone, timedelta
+from typing import Dict, Any
 import pytest
 from pydantic import ValidationError
 
