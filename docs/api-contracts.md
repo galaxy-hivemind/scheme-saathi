@@ -449,15 +449,189 @@ Implemented in Phase 2. Provides authenticated citizen discovery and detail view
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/eligibility/check` | JWT | Check eligibility for a scheme |
+| POST | `/eligibility/check` | JWT | Check citizen eligibility for a scheme |
+| POST | `/eligibility/evaluate/{scheme_id}` | JWT | RESTful endpoint to evaluate a specific scheme by UUID |
+| POST | `/eligibility/evaluate-all` | JWT | Batch evaluate citizen eligibility across all available schemes |
 
-**POST /eligibility/check** Request body:
+#### `POST /eligibility/check`
+
+**Query Parameters:**
+- `include_pending` (boolean, optional, default `false`): When `true`, permits evaluation of schemes marked `pending_verification`.
+
+**Request Body (`EligibilityCheckRequest`):**
 ```json
 {
-  "scheme_id": "uuid"
+  "scheme_id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+  "profile_override": {
+    "is_landholding_farmer": true,
+    "is_institutional_landholder": false,
+    "is_income_tax_payer": false
+  }
 }
 ```
-Response: `{ data: EligibilityResult }`
+*Note: `profile_override` is optional and enables what-if evaluation in conversational flows without mutating the citizen's persisted database profile.*
+
+**Success Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "scheme_id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    "scheme_code": "PM-KISAN",
+    "scheme_name": "Pradhan Mantri Kisan Samman Nidhi",
+    "overall_status": "PASS",
+    "result": "eligible",
+    "eligible": true,
+    "rule_version_id": "e2d3c4b5-a6f7-8b9c-0d1e-2f3a4b5c6d7e",
+    "rule_version": 1,
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Core statutory eligibility conditions verified from Operational Guidelines.",
+    "matched_conditions": [
+      {
+        "field": "is_landholding_farmer",
+        "operator": "equals",
+        "expected_value": true,
+        "actual_value": true,
+        "status": "PASS",
+        "passed": true,
+        "explanation": "Requirement satisfied: is_landholding_farmer (True) equals True."
+      },
+      {
+        "field": "is_institutional_landholder",
+        "operator": "equals",
+        "expected_value": false,
+        "actual_value": false,
+        "status": "PASS",
+        "passed": true,
+        "explanation": "Requirement satisfied: is_institutional_landholder (False) equals False."
+      },
+      {
+        "field": "is_income_tax_payer",
+        "operator": "equals",
+        "expected_value": false,
+        "actual_value": false,
+        "status": "PASS",
+        "passed": true,
+        "explanation": "Requirement satisfied: is_income_tax_payer (False) equals False."
+      }
+    ],
+    "failed_conditions": [],
+    "unknown_conditions": [],
+    "condition_results": [
+      {
+        "field": "is_landholding_farmer",
+        "operator": "equals",
+        "expected_value": true,
+        "actual_value": true,
+        "status": "PASS",
+        "passed": true,
+        "explanation": "Requirement satisfied: is_landholding_farmer (True) equals True."
+      }
+    ],
+    "missing_fields": [],
+    "next_questions": [],
+    "explanation": "Eligible! You satisfy all 3 evaluated eligibility criteria for Pradhan Mantri Kisan Samman Nidhi.",
+    "evaluated_at": "2026-11-11T00:10:00Z"
+  },
+  "error": null,
+  "request_id": "4e7f8a1b-2c3d-4e5f-6a7b-8c9d0e1f2a3b"
+}
+```
+
+**UNKNOWN / Insufficient Information Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "scheme_id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    "scheme_code": "PM-KISAN",
+    "scheme_name": "Pradhan Mantri Kisan Samman Nidhi",
+    "overall_status": "UNKNOWN",
+    "result": "insufficient_information",
+    "eligible": null,
+    "rule_version_id": "e2d3c4b5-a6f7-8b9c-0d1e-2f3a4b5c6d7e",
+    "rule_version": 1,
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Core statutory eligibility conditions verified from Operational Guidelines.",
+    "matched_conditions": [],
+    "failed_conditions": [],
+    "unknown_conditions": [
+      {
+        "field": "is_landholding_farmer",
+        "operator": "equals",
+        "expected_value": true,
+        "actual_value": null,
+        "status": "UNKNOWN",
+        "passed": null,
+        "explanation": "Information required: Field 'is_landholding_farmer' is missing from your profile."
+      }
+    ],
+    "missing_fields": ["is_landholding_farmer"],
+    "next_questions": [
+      {
+        "field": "is_landholding_farmer",
+        "question": "Do you or your family own cultivable agricultural land?",
+        "question_hi": "क्या आपके या आपके परिवार के नाम पर कृषि योग्य भूमि है?",
+        "field_type": "boolean",
+        "options": null
+      }
+    ],
+    "explanation": "Insufficient information: 1 required profile attributes must be provided to determine eligibility for Pradhan Mantri Kisan Samman Nidhi.",
+    "evaluated_at": "2026-11-11T00:10:00Z"
+  },
+  "error": null,
+  "request_id": "5f8a9b2c-3d4e-5f6a-7b8c-9d0e1f2a3b4c"
+}
+```
+
+#### `POST /eligibility/evaluate-all`
+
+**Request Body (`BatchEligibilityCheckRequest`, optional):**
+```json
+{
+  "include_pending": false,
+  "category": "agriculture",
+  "profile_override": null
+}
+```
+
+**Success Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "total_evaluated": 4,
+    "eligible_count": 2,
+    "ineligible_count": 0,
+    "unknown_count": 2,
+    "results": [
+      {
+        "scheme_id": "...",
+        "scheme_code": "AB-PMJAY",
+        "overall_status": "PASS",
+        "result": "eligible",
+        "eligible": true,
+        "matched_conditions": [],
+        "failed_conditions": [],
+        "unknown_conditions": [],
+        "missing_fields": [],
+        "next_questions": [],
+        "explanation": "Eligible! ...",
+        "evaluated_at": "2026-11-11T00:10:00Z"
+      }
+    ]
+  },
+  "error": null,
+  "request_id": "6a7b8c9d-0e1f-2a3b-4c5d-6e7f8a9b0c1d"
+}
+```
+
+**Common Error Responses:**
+- `401 Unauthorized`: Missing or invalid Bearer token in `Authorization` header.
+- `404 Not Found`: Scheme ID does not exist, is inactive, or is pending verification (without `include_pending=true`).
+- `422 Unprocessable Entity`: Malformed UUID or invalid category filter.
 
 ---
 

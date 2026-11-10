@@ -1,0 +1,475 @@
+"""
+Deterministic Tri-State Eligibility Evaluation Engine.
+Evaluates structured SchemeRuleVersion AST criteria against citizen profiles.
+Pure Python, type-safe, non-evaluating, and transparent.
+"""
+from typing import Any, Dict, List, Optional, Tuple, Set
+from datetime import date, datetime, timezone
+from decimal import Decimal
+import uuid
+
+from app.models.scheme import Scheme
+from app.models.scheme_rule_version import SchemeRuleVersion
+from app.models.user_profile import UserProfile
+from app.eligibility.operators import evaluate_operator, OPERATORS
+from app.schemas.eligibility import (
+    TriStateStatus,
+    EligibilityResultStatus,
+    ConditionResult,
+    NextQuestion,
+    EligibilityResult,
+)
+
+
+FIELD_QUESTIONS: Dict[str, Tuple[str, str, str, Optional[List[str]]]] = {
+    "is_landholding_farmer": (
+        "Do you or your family own cultivable agricultural land?",
+        "क्या आपके या आपके परिवार के नाम पर कृषि योग्य भूमि है?",
+        "boolean",
+        None,
+    ),
+    "is_institutional_landholder": (
+        "Are you an institutional landholder (e.g., trust, company, or institution)?",
+        "क्या आप संस्थागत भूमिधारक (जैसे ट्रस्ट, कंपनी या संस्था) हैं?",
+        "boolean",
+        None,
+    ),
+    "is_income_tax_payer": (
+        "Did you or any member of your household pay income tax in the last assessment year?",
+        "क्या आपने या आपके परिवार के किसी सदस्य ने पिछले निर्धारण वर्ष में आयकर का भुगतान किया था?",
+        "boolean",
+        None,
+    ),
+    "is_street_vendor": (
+        "Are you engaged in street vending or urban hawking?",
+        "क्या आप शहरी क्षेत्र में स्ट्रीट वेंडर या फेरीवाले का कार्य करते हैं?",
+        "boolean",
+        None,
+    ),
+    "has_vending_certificate_or_lor": (
+        "Do you possess a Certificate of Vending or Letter of Recommendation (LoR) issued by the ULB?",
+        "क्या आपके पास नगर निकाय द्वारा जारी वेंडिंग प्रमाण पत्र या सिफारिश पत्र (LoR) है?",
+        "boolean",
+        None,
+    ),
+    "owns_pucca_house_in_india": (
+        "Do you or any member of your family own a pucca (permanent) house anywhere in India?",
+        "क्या आपके या आपके परिवार के किसी सदस्य के पास भारत में कहीं भी पक्का मकान है?",
+        "boolean",
+        None,
+    ),
+    "is_urban_resident": (
+        "Do you reside in an urban area?",
+        "क्या आप शहरी क्षेत्र में निवास करते हैं?",
+        "boolean",
+        None,
+    ),
+    "is_rural_resident": (
+        "Do you reside in a rural area?",
+        "क्या आप ग्रामीण क्षेत्र में निवास करते हैं?",
+        "boolean",
+        None,
+    ),
+    "is_secc_deprived_family": (
+        "Is your family categorized under the SECC 2011 deprivation criteria or RSBY/PMJAY eligible list?",
+        "क्या आपका परिवार SECC 2011 सामाजिक-आर्थिक अभावग्रस्त श्रेणी या पात्र सूची में आता है?",
+        "boolean",
+        None,
+    ),
+    "has_existing_lpg_connection": (
+        "Does any member of your household already have an active LPG gas connection?",
+        "क्या आपके परिवार में पहले से किसी के नाम पर एलपीजी गैस कनेक्शन है?",
+        "boolean",
+        None,
+    ),
+    "age": (
+        "What is your current age (or date of birth)?",
+        "आपकी वर्तमान आयु (या जन्म तिथि) क्या है?",
+        "number",
+        None,
+    ),
+    "applicant_age": (
+        "What is the applicant's age?",
+        "आवेदक की आयु क्या है?",
+        "number",
+        None,
+    ),
+    "applicant_gender": (
+        "What is the applicant's gender?",
+        "आवेदक का लिंग क्या है?",
+        "string",
+        ["female", "male", "transgender"],
+    ),
+    "gender": (
+        "What is your gender?",
+        "आपका लिंग क्या है?",
+        "string",
+        ["female", "male", "transgender"],
+    ),
+    "annual_family_income": (
+        "What is your total annual family income in Rupees?",
+        "आपके परिवार की कुल वार्षिक आय (रुपये में) कितनी है?",
+        "number",
+        None,
+    ),
+}
+
+
+def _calculate_age(dob: Optional[date]) -> Optional[int]:
+    """Calculate age in years from date of birth."""
+    if not dob:
+        return None
+    today = date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
+def extract_profile_field(
+    field_name: str,
+    profile: Optional[UserProfile],
+    override_data: Optional[Dict[str, Any]] = None,
+) -> Tuple[Any, bool]:
+    """
+    Extract a profile field from direct columns, derived calculations, or profile_data JSONB.
+    Returns (value, is_present). If is_present is False or value is None, the field is considered missing.
+    """
+    # 1. Check override_data first if provided
+    if override_data and field_name in override_data:
+        val = override_data[field_name]
+        return val, val is not None
+
+    if profile is None:
+        return None, False
+
+    # 2. Check derived fields
+    if field_name in ("age", "applicant_age"):
+        # Check override, then direct profile_data, then calculate from date_of_birth
+        if profile.profile_data and field_name in profile.profile_data:
+            val = profile.profile_data[field_name]
+            if val is not None:
+                return val, True
+        age = _calculate_age(profile.date_of_birth)
+        if age is not None:
+            return age, True
+        return None, False
+
+    if field_name in ("applicant_gender", "gender"):
+        if profile.gender:
+            return profile.gender.strip().lower(), True
+        if profile.profile_data and "applicant_gender" in profile.profile_data:
+            val = profile.profile_data["applicant_gender"]
+            if val:
+                return str(val).strip().lower(), True
+        return None, False
+
+    if field_name == "is_urban_resident":
+        if profile.residence_type:
+            return profile.residence_type.strip().lower() == "urban", True
+        if profile.profile_data and "is_urban_resident" in profile.profile_data:
+            val = profile.profile_data["is_urban_resident"]
+            return val, val is not None
+        return None, False
+
+    if field_name == "is_rural_resident":
+        if profile.residence_type:
+            return profile.residence_type.strip().lower() == "rural", True
+        if profile.profile_data and "is_rural_resident" in profile.profile_data:
+            val = profile.profile_data["is_rural_resident"]
+            return val, val is not None
+        return None, False
+
+    # 3. Direct UserProfile model columns
+    if hasattr(profile, field_name):
+        val = getattr(profile, field_name)
+        if val is not None:
+            if isinstance(val, str):
+                return val.strip().lower(), True
+            return val, True
+
+    # 4. JSONB dynamic profile_data dictionary
+    if profile.profile_data and field_name in profile.profile_data:
+        val = profile.profile_data[field_name]
+        if val is not None:
+            if isinstance(val, str):
+                return val.strip().lower(), True
+            return val, True
+
+    return None, False
+
+
+def evaluate_condition_node(
+    condition: Dict[str, Any],
+    profile: Optional[UserProfile],
+    override_data: Optional[Dict[str, Any]] = None,
+) -> ConditionResult:
+    """
+    Evaluate a single leaf condition node.
+    Returns a ConditionResult with PASS, FAIL, or UNKNOWN.
+    """
+    field = condition.get("field")
+    operator = condition.get("operator")
+    expected = condition.get("value")
+
+    if not field or not operator:
+        raise ValueError(f"Malformed condition node missing 'field' or 'operator': {condition}")
+
+    if operator not in OPERATORS:
+        raise ValueError(f"Unsupported eligibility operator '{operator}' in condition: {condition}")
+
+    actual, is_present = extract_profile_field(field, profile, override_data)
+
+    # Special handling for operator 'exists'
+    if operator == "exists":
+        passed = evaluate_operator("exists", actual if is_present else None, expected)
+        status = TriStateStatus.PASS if passed else TriStateStatus.FAIL
+        return ConditionResult(
+            field=field,
+            operator=operator,
+            expected_value=expected,
+            actual_value=actual,
+            status=status,
+            passed=passed,
+            explanation=f"Requirement {'satisfied' if passed else 'not satisfied'}: {field} existence is {actual is not None} (expected {expected}).",
+        )
+
+    # If field is missing from citizen profile -> UNKNOWN
+    if not is_present or actual is None:
+        return ConditionResult(
+            field=field,
+            operator=operator,
+            expected_value=expected,
+            actual_value=None,
+            status=TriStateStatus.UNKNOWN,
+            passed=None,
+            explanation=f"Information required: Field '{field}' is missing from your profile.",
+        )
+
+    # Evaluate operator
+    try:
+        passed = evaluate_operator(operator, actual, expected)
+        status = TriStateStatus.PASS if passed else TriStateStatus.FAIL
+        explanation = (
+            f"Requirement satisfied: {field} ({actual}) {operator} {expected}."
+            if passed
+            else f"Requirement not satisfied: {field} is {actual}, but expected {operator} {expected}."
+        )
+        return ConditionResult(
+            field=field,
+            operator=operator,
+            expected_value=expected,
+            actual_value=actual,
+            status=status,
+            passed=passed,
+            explanation=explanation,
+        )
+    except Exception as e:
+        return ConditionResult(
+            field=field,
+            operator=operator,
+            expected_value=expected,
+            actual_value=actual,
+            status=TriStateStatus.UNKNOWN,
+            passed=None,
+            explanation=f"Evaluation error for '{field}': {str(e)}",
+        )
+
+
+def evaluate_ast(
+    node: Dict[str, Any],
+    profile: Optional[UserProfile],
+    override_data: Optional[Dict[str, Any]] = None,
+) -> Tuple[TriStateStatus, List[ConditionResult]]:
+    """
+    Recursively evaluate an eligibility AST node (supporting nested 'all' and 'any' combinators).
+    Returns (overall_status, list_of_leaf_condition_results).
+    """
+    # 1. Combinator 'all':
+    # - Any FAIL -> FAIL
+    # - All PASS -> PASS
+    # - Otherwise -> UNKNOWN
+    if "all" in node:
+        children = node["all"]
+        all_leaf_results: List[ConditionResult] = []
+        child_statuses: List[TriStateStatus] = []
+
+        for child in children:
+            child_status, leaf_results = evaluate_ast(child, profile, override_data)
+            child_statuses.append(child_status)
+            all_leaf_results.extend(leaf_results)
+
+        if any(s == TriStateStatus.FAIL for s in child_statuses):
+            return TriStateStatus.FAIL, all_leaf_results
+        if all(s == TriStateStatus.PASS for s in child_statuses):
+            return TriStateStatus.PASS, all_leaf_results
+        return TriStateStatus.UNKNOWN, all_leaf_results
+
+    # 2. Combinator 'any':
+    # - Any PASS -> PASS
+    # - All FAIL -> FAIL
+    # - Otherwise -> UNKNOWN
+    if "any" in node:
+        children = node["any"]
+        all_leaf_results = []
+        child_statuses = []
+
+        for child in children:
+            child_status, leaf_results = evaluate_ast(child, profile, override_data)
+            child_statuses.append(child_status)
+            all_leaf_results.extend(leaf_results)
+
+        if any(s == TriStateStatus.PASS for s in child_statuses):
+            return TriStateStatus.PASS, all_leaf_results
+        if all(s == TriStateStatus.FAIL for s in child_statuses):
+            return TriStateStatus.FAIL, all_leaf_results
+        return TriStateStatus.UNKNOWN, all_leaf_results
+
+    # 3. Leaf condition node:
+    if "field" in node and "operator" in node:
+        res = evaluate_condition_node(node, profile, override_data)
+        return res.status, [res]
+
+    raise ValueError(f"Invalid AST node; must contain 'all', 'any', or a leaf condition: {node}")
+
+
+def get_next_question(field_name: str, preferred_language: str = "hi") -> NextQuestion:
+    """Generate human-readable question in English and Hindi for a missing field."""
+    meta = FIELD_QUESTIONS.get(field_name)
+    if meta:
+        q_en, q_hi, field_type, options = meta
+        return NextQuestion(
+            field=field_name,
+            question=q_en,
+            question_hi=q_hi,
+            field_type=field_type,
+            options=options,
+        )
+
+    # Fallback for dynamic fields
+    pretty_name = field_name.replace("_", " ").capitalize()
+    return NextQuestion(
+        field=field_name,
+        question=f"Please provide your {pretty_name} to check your eligibility.",
+        question_hi=f"कृपया अपनी पात्रता जांचने के लिए {pretty_name} प्रदान करें।",
+        field_type="string",
+        options=None,
+    )
+
+
+def evaluate_scheme_eligibility(
+    scheme: Scheme,
+    profile: Optional[UserProfile],
+    override_data: Optional[Dict[str, Any]] = None,
+) -> EligibilityResult:
+    """
+    Evaluate citizen profile against a scheme's active rule version.
+    Returns a complete, transparent EligibilityResult.
+    """
+    now = datetime.now(timezone.utc)
+    preferred_lang = profile.preferred_language if profile else "hi"
+
+    # Find the active rule version
+    active_rule: Optional[SchemeRuleVersion] = next(
+        (r for r in scheme.rule_versions if r.is_active),
+        None,
+    )
+
+    # Handle schemes with no active rule version or null criteria
+    if active_rule is None or not active_rule.eligibility_criteria:
+        return EligibilityResult(
+            scheme_id=scheme.id,
+            scheme_code=scheme.scheme_code,
+            scheme_name=scheme.name,
+            overall_status=TriStateStatus.UNKNOWN,
+            result=EligibilityResultStatus.INSUFFICIENT_INFORMATION,
+            eligible=None,
+            rule_version_id=active_rule.id if active_rule else None,
+            rule_version=active_rule.version if active_rule else None,
+            is_authoritative=False,
+            is_provisional=True,
+            limitations="No structured eligibility criteria AST is defined for this scheme.",
+            matched_conditions=[],
+            failed_conditions=[],
+            unknown_conditions=[],
+            condition_results=[],
+            missing_fields=[],
+            next_questions=[],
+            explanation=(
+                "पात्रता निर्धारित नहीं की जा सकी क्योंकि इस योजना के लिए कोई आधिकारिक पात्रता नियम परिभाषित नहीं हैं।"
+                if preferred_lang == "hi"
+                else "Eligibility cannot be determined because no authoritative rules are defined for this scheme."
+            ),
+            evaluated_at=now,
+        )
+
+    criteria = active_rule.eligibility_criteria
+    is_authoritative = bool(criteria.get("is_authoritative", False))
+    is_provisional = bool(criteria.get("is_provisional", not is_authoritative))
+    limitations = criteria.get("limitations")
+
+    # Evaluate AST
+    overall_status, leaf_results = evaluate_ast(criteria, profile, override_data)
+
+    matched = [r for r in leaf_results if r.status == TriStateStatus.PASS]
+    failed = [r for r in leaf_results if r.status == TriStateStatus.FAIL]
+    unknown = [r for r in leaf_results if r.status == TriStateStatus.UNKNOWN]
+
+    # Deduplicate missing fields maintaining order
+    missing_fields: List[str] = list(dict.fromkeys(r.field for r in unknown))
+    next_questions = [get_next_question(f, preferred_lang) for f in missing_fields]
+
+    # Derive high-level result & explanation
+    if overall_status == TriStateStatus.PASS:
+        result = EligibilityResultStatus.ELIGIBLE
+        eligible = True
+        explanation = (
+            f"बधाई हो! आप {scheme.name} के लिए पात्र हैं। आपके द्वारा प्रदान की गई सभी {len(matched)} शर्तें पूरी होती हैं।"
+            if preferred_lang == "hi"
+            else f"Eligible! You satisfy all {len(matched)} evaluated eligibility criteria for {scheme.name}."
+        )
+    elif overall_status == TriStateStatus.FAIL:
+        result = EligibilityResultStatus.NOT_ELIGIBLE
+        eligible = False
+        failed_fields = ", ".join(f"'{r.field}'" for r in failed)
+        explanation = (
+            f"आप {scheme.name} के लिए पात्र नहीं हैं। निम्नलिखित मानदंड पूरे नहीं हुए: {failed_fields}।"
+            if preferred_lang == "hi"
+            else f"Not eligible for {scheme.name}. The following criteria were not satisfied: {failed_fields}."
+        )
+    else:
+        # UNKNOWN
+        eligible = None
+        if len(matched) > 0 and len(failed) == 0:
+            result = EligibilityResultStatus.POTENTIALLY_ELIGIBLE
+            explanation = (
+                f"संभावित रूप से पात्र! आप {len(matched)} शर्तों को पूरा करते हैं, लेकिन अंतिम पात्रता पुष्टि के लिए {len(missing_fields)} विवरण आवश्यक हैं।"
+                if preferred_lang == "hi"
+                else f"Potentially eligible! You satisfy {len(matched)} conditions, but {len(missing_fields)} missing profile attributes are required for a final decision."
+            )
+        else:
+            result = EligibilityResultStatus.INSUFFICIENT_INFORMATION
+            explanation = (
+                f"अधूरी जानकारी: {scheme.name} के लिए आपकी पात्रता जांचने हेतु {len(missing_fields)} आवश्यक विवरण दर्ज करें।"
+                if preferred_lang == "hi"
+                else f"Insufficient information: {len(missing_fields)} required profile attributes must be provided to determine eligibility for {scheme.name}."
+            )
+
+    return EligibilityResult(
+        scheme_id=scheme.id,
+        scheme_code=scheme.scheme_code,
+        scheme_name=scheme.name,
+        overall_status=overall_status,
+        result=result,
+        eligible=eligible,
+        rule_version_id=active_rule.id,
+        rule_version=active_rule.version,
+        is_authoritative=is_authoritative,
+        is_provisional=is_provisional,
+        limitations=limitations,
+        matched_conditions=matched,
+        failed_conditions=failed,
+        unknown_conditions=unknown,
+        condition_results=leaf_results,
+        missing_fields=missing_fields,
+        next_questions=next_questions,
+        explanation=explanation,
+        evaluated_at=now,
+    )

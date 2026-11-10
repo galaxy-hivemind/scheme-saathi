@@ -16,6 +16,16 @@ from app.schemas.profile import (
     UserConsentRevokeRequest,
     UserConsentResponse,
 )
+from app.schemas.eligibility import (
+    TriStateStatus,
+    EligibilityResultStatus,
+    ConditionResult,
+    NextQuestion,
+    EligibilityCheckRequest,
+    EligibilityResult,
+    BatchEligibilityCheckRequest,
+    BatchEligibilityResponse,
+)
 
 __all__ = [
     "APIResponse",
@@ -31,4 +41,12 @@ __all__ = [
     "UserConsentCreate",
     "UserConsentRevokeRequest",
     "UserConsentResponse",
+    "TriStateStatus",
+    "EligibilityResultStatus",
+    "ConditionResult",
+    "NextQuestion",
+    "EligibilityCheckRequest",
+    "EligibilityResult",
+    "BatchEligibilityCheckRequest",
+    "BatchEligibilityResponse",
 ]
