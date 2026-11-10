@@ -76,17 +76,15 @@ def validate_migration_test_target(
     test_url: str,
     app_url: str,
     enforce_opt_in: bool = True,
-    enforce_restricted_role: bool = True,
     expected_role: str = TEST_DB_USER,
 ) -> None:
-    """Pre-flight validation for migration test execution with restricted role enforcement."""
+    """Pre-flight validation for migration test execution with mandatory restricted role enforcement."""
     verify_database_isolation(
         target_url=test_url,
         app_url=app_url,
         expected_purpose=MIGRATION_TEST_PURPOSE,
         enforce_opt_in=enforce_opt_in,
         opt_in_env_vars=MIGRATION_TEST_OPT_IN_VARS,
-        enforce_restricted_role=enforce_restricted_role,
         expected_role=expected_role,
     )
 
@@ -123,7 +121,6 @@ def isolated_test_schema(engine, prefix: str = "migtest"):
         test_url,
         settings.DATABASE_URL,
         purpose=MIGRATION_TEST_PURPOSE,
-        enforce_restricted_role=True,
         expected_role=TEST_DB_USER,
     )
 
@@ -138,7 +135,6 @@ def isolated_test_schema(engine, prefix: str = "migtest"):
                 test_url,
                 settings.DATABASE_URL,
                 purpose=MIGRATION_TEST_PURPOSE,
-                enforce_restricted_role=True,
                 expected_role=TEST_DB_USER,
             )
         except Exception as teardown_exc:
@@ -164,7 +160,6 @@ def managed_control_schema(engine, prefix: str = "control"):
             test_url,
             settings.DATABASE_URL,
             purpose=MIGRATION_TEST_PURPOSE,
-            enforce_restricted_role=True,
             expected_role=TEST_DB_USER,
         )
         created = True
@@ -179,7 +174,6 @@ def managed_control_schema(engine, prefix: str = "control"):
                     test_url,
                     settings.DATABASE_URL,
                     purpose=MIGRATION_TEST_PURPOSE,
-                    enforce_restricted_role=True,
                     expected_role=TEST_DB_USER,
                 )
             except Exception as teardown_exc:

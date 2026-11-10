@@ -65,8 +65,8 @@ Once running, visit:
 ## Running tests
 
 The test suite provides two independent, verified isolation strategies:
-1. **Genuinely Isolated Testcontainers (Preferred):** Launches a fresh, ephemeral PostgreSQL container on a dynamic port, creates isolated credentials, executes tests, and completely destroys the container upon session completion.
-2. **Dedicated Role-Isolated PostgreSQL Test Databases (Fallback):** Runs against pre-provisioned databases (`scheme_saathi_test` and `scheme_saathi_migration_test`) using a dedicated, privilege-restricted runtime role (`scheme_saathi_test_user`).
+1. **Genuinely Isolated Testcontainers (Preferred):** Launches a fresh, ephemeral PostgreSQL container on a dynamic port, generates a cryptographically random runtime password, administratively provisions the restricted runtime role (`scheme_saathi_test_user`) with strict non-administrative attributes and zero memberships, executes all tests under that restricted role, and completely destroys the container upon session completion.
+2. **Dedicated Role-Isolated PostgreSQL Test Databases (Fallback):** Runs against pre-provisioned databases (`scheme_saathi_test` and `scheme_saathi_migration_test`) using the dedicated, privilege-restricted runtime role (`scheme_saathi_test_user`). Both execution paths enforce mandatory runtime-role catalog verification immediately before any DDL.
 
 ### Pure Unit Tests (Zero Database Fixtures)
 
@@ -144,9 +144,11 @@ The Scheme Saathi test runner employs a strict **fail-closed trust model** (`app
    - `ALLOW_TEST_DB_RESET=1` authorizes regular test database resets.
    - `ALLOW_MIGRATION_TESTS=1` authorizes migration test schema creation/deletion.
 5. **Centralized Execution Gateways & Bound DDL Connections:**
-   All destructive DDL calls route through verified functions (`safe_drop_all`, `safe_create_all`, `safe_create_schema`, `safe_drop_schema`). The safety gate directly inspects the live SQLAlchemy connection (`verify_connection_isolation`) immediately prior to DDL and binds execution to that exact verified connection (`bind=conn`). Mismatched engines (e.g. administrative engines or engines targeting a different database) are rejected before DDL execution, leaving tables and schemas unchanged. Protected system schemas (`public`, `pg_catalog`, `information_schema`) can never be dropped.
-6. **Zero Role Memberships & Non-Administrative Attributes:**
-   The dedicated runtime role (`scheme_saathi_test_user`) is provisioned with zero role memberships (`pg_auth_members`), `rolinherit = FALSE`, and explicit non-administrative attributes (`LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS`). Elevated memberships are revoked and verified.
+   All destructive DDL calls route through verified functions (`safe_drop_all`, `safe_create_all`, `safe_create_schema`, `safe_drop_schema`). The safety gate directly inspects the live SQLAlchemy connection (`verify_connection_isolation`) immediately prior to DDL and binds execution to that exact verified connection within an owned transaction scope or nested savepoint. Mismatched engines (e.g. administrative engines or engines targeting a different database) are rejected before DDL execution, leaving tables and schemas unchanged. Protected system schemas (`public`, `pg_catalog`, `information_schema`) can never be dropped.
+6. **Mandatory Live Connection Catalog & Membership Verification:**
+   Immediately prior to DDL execution, the gateway queries PostgreSQL system catalogs on the exact DDL execution connection to verify that the active role satisfies all security attributes: `rolsuper = FALSE`, `rolcreatedb = FALSE`, `rolcreaterole = FALSE`, `rolcanlogin = TRUE`, `rolinherit = FALSE`, `rolreplication = FALSE`, `rolbypassrls = FALSE`, and zero memberships in `pg_auth_members`. Any unexpected attribute, elevated membership, or query failure fails closed before DDL.
+7. **Safe Testcontainers Provisioning & Dynamic Credentials:**
+   When running under `USE_TESTCONTAINERS=1`, a cryptographically random runtime password is generated per disposable container instance (never logged or fixed). Role creation and permission grants are constructed using driver-supported SQL composition (`psycopg.sql`) with validated PostgreSQL identifiers, ensuring strict security parity between container and fallback runs.
 
 ### Verification Failure Troubleshooting
 

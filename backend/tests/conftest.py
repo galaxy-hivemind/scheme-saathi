@@ -42,6 +42,7 @@ TEST_DB_PORT = os.getenv("TEST_DB_PORT", "5432")
 TEST_DB_NAME = os.getenv("TEST_DB_NAME", "scheme_saathi_test")
 
 _test_container = None
+_container_runtime_url = None
 _active_test_engine = None
 _active_session_factory = None
 
@@ -52,8 +53,11 @@ def get_test_database_url() -> str:
     Fails immediately with a clear configuration error if required fallback credentials are absent.
     Never constructs or returns a URL with an empty, default, or placeholder password.
     """
-    global _test_container
+    global _test_container, _container_runtime_url
     if USE_TESTCONTAINERS:
+        if _container_runtime_url is not None:
+            return _container_runtime_url
+
         if _test_container is None:
             os.environ["TESTCONTAINERS_RYUK_DISABLED"] = "true"
             try:
@@ -67,16 +71,44 @@ def get_test_database_url() -> str:
                 admin_url = admin_url.replace("postgresql+psycopg2://", "postgresql://")
 
             # 1. Administratively provision restricted runtime role inside disposable container
-            from app.core.db_safety import normalize_db_url
-            container_test_password = "container_runtime_test_password"
+            from urllib.parse import quote_plus
+            from psycopg import sql
+            from app.core.db_safety import normalize_db_url, validate_pg_identifier
+            import secrets
+
+            validated_user = validate_pg_identifier(TEST_DB_USER, "test database user")
+            parsed = normalize_db_url(admin_url)
+            container_db = parsed.database or "test"
+            validated_db = validate_pg_identifier(container_db, "database name")
+
+            # Generate a cryptographically random password for this disposable container instance
+            container_password = secrets.token_urlsafe(32)
+
+            create_role_stmt = sql.SQL(
+                "CREATE ROLE {user} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
+                "NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD {pwd};"
+            ).format(
+                user=sql.Identifier(validated_user),
+                pwd=sql.Literal(container_password),
+            )
+            grant_db_stmt = sql.SQL(
+                "GRANT CONNECT, TEMPORARY, CREATE ON DATABASE {db} TO {user};"
+            ).format(
+                db=sql.Identifier(validated_db),
+                user=sql.Identifier(validated_user),
+            )
+            grant_schema_stmt = sql.SQL(
+                "GRANT ALL ON SCHEMA public TO {user};"
+            ).format(
+                user=sql.Identifier(validated_user),
+            )
+
             admin_engine = create_engine(admin_url, pool_pre_ping=True)
             with admin_engine.connect() as conn:
-                conn.execute(text(f"""
-                    CREATE ROLE "{TEST_DB_USER}" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-                    NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD '{container_test_password}';
-                """))
-                conn.execute(text(f'GRANT CONNECT, TEMPORARY, CREATE ON DATABASE test TO "{TEST_DB_USER}";'))
-                conn.execute(text(f'GRANT ALL ON SCHEMA public TO "{TEST_DB_USER}";'))
+                raw_conn = conn.connection.dbapi_connection
+                conn.execute(text(create_role_stmt.as_string(raw_conn)))
+                conn.execute(text(grant_db_stmt.as_string(raw_conn)))
+                conn.execute(text(grant_schema_stmt.as_string(raw_conn)))
                 conn.commit()
 
             # 2. Administratively provision sentinel inside disposable container
@@ -85,17 +117,14 @@ def get_test_database_url() -> str:
                 app_url=settings.DATABASE_URL,
                 purpose=REGULAR_TEST_PURPOSE,
                 enforce_opt_in=False,
-                grant_role=TEST_DB_USER,
+                grant_role=validated_user,
             )
             admin_engine.dispose()
 
-            parsed = normalize_db_url(admin_url)
-            container_runtime_url = f"postgresql://{TEST_DB_USER}:{container_test_password}@{parsed.host}:{parsed.port or 5432}/{parsed.database or 'test'}"
-            return container_runtime_url
-        from app.core.db_safety import normalize_db_url
-        raw_admin = _test_container.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
-        parsed = normalize_db_url(raw_admin)
-        return f"postgresql://{TEST_DB_USER}:container_runtime_test_password@{parsed.host}:{parsed.port or 5432}/{parsed.database or 'test'}"
+            safe_pwd = quote_plus(container_password)
+            _container_runtime_url = f"postgresql://{validated_user}:{safe_pwd}@{parsed.host}:{parsed.port or 5432}/{container_db}"
+            del container_password
+            return _container_runtime_url
 
     # Fallback mode: require explicit credentials
     from urllib.parse import quote_plus
@@ -240,10 +269,11 @@ def setup_test_db():
             )
 
         # Stop Testcontainers container if one was started
-        global _test_container
+        global _test_container, _container_runtime_url
         if _test_container is not None:
             _test_container.stop()
             _test_container = None
+            _container_runtime_url = None
 
 
 @pytest.fixture

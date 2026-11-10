@@ -298,23 +298,27 @@ def setup_test_roles(
                 f"Cannot use an administrative role as test runtime role."
             )
 
-        # 1. Idempotently create or update the role with explicit restricted attributes
+        # 1. Idempotently create or update the role with explicit restricted attributes using safe SQL composition
         role_exists = conn.execute(
             text("SELECT exists(SELECT 1 FROM pg_roles WHERE rolname = :role)"),
             {"role": validated_role},
         ).scalar()
 
-        safe_password = password.strip().replace("'", "''")
+        from psycopg import sql
+        raw_conn = conn.connection.dbapi_connection
+        clean_password = password.strip()
         if not role_exists:
-            conn.execute(text(
-                f'CREATE ROLE "{validated_role}" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE '
-                f'NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD \'{safe_password}\';'
-            ))
+            create_stmt = sql.SQL(
+                "CREATE ROLE {u} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
+                "NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD {p};"
+            ).format(u=sql.Identifier(validated_role), p=sql.Literal(clean_password))
+            conn.execute(text(create_stmt.as_string(raw_conn)))
         else:
-            conn.execute(text(
-                f'ALTER ROLE "{validated_role}" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE '
-                f'NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD \'{safe_password}\';'
-            ))
+            alter_stmt = sql.SQL(
+                "ALTER ROLE {u} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
+                "NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD {p};"
+            ).format(u=sql.Identifier(validated_role), p=sql.Literal(clean_password))
+            conn.execute(text(alter_stmt.as_string(raw_conn)))
 
         # 2. Inspect all role memberships granted to the runtime role; revoke all memberships to prevent privilege escalation
         memberships = conn.execute(
@@ -638,7 +642,6 @@ def verify_connection_isolation(
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] | None = None,
     expected_role: str = TEST_RUNTIME_ROLE,
-    **kwargs,
 ) -> DatabaseIdentity:
     """
     Verifies that the actual live SQLAlchemy connection satisfies all isolation,
@@ -647,7 +650,7 @@ def verify_connection_isolation(
     Restricted runtime role enforcement is MANDATORY and cannot be disabled.
     Fails closed immediately before any destructive DDL can execute.
     """
-    # 0. Validate expected_role (mandatory non-empty string, cannot be administrative)
+    # 0. Validate expected_role (mandatory non-empty string, cannot be administrative, must match configured runtime role)
     if expected_role is None:
         expected_role = TEST_RUNTIME_ROLE
     if not isinstance(expected_role, str) or not expected_role.strip():
@@ -656,6 +659,12 @@ def verify_connection_isolation(
     if expected_role_clean.lower() in ADMIN_ROLES:
         raise PermissionError(
             f"Security violation: administrative role '{expected_role_clean}' cannot be used as expected test runtime role."
+        )
+    configured_runtime_role = os.getenv("TEST_DB_USER", TEST_RUNTIME_ROLE).strip() or TEST_RUNTIME_ROLE
+    if expected_role_clean != TEST_RUNTIME_ROLE and expected_role_clean != configured_runtime_role:
+        raise PermissionError(
+            f"Security violation: expected role '{expected_role_clean}' is not the approved, configured "
+            f"test runtime role ('{configured_runtime_role}'). Arbitrary roles are forbidden."
         )
 
     # 1. Authorization check
@@ -788,6 +797,70 @@ def verify_connection_isolation(
             f"expected restricted runtime role '{expected_role_clean}'."
         )
 
+    # 10. Revalidate runtime-role catalog attributes and zero memberships on the actual connection
+    try:
+        role_record = conn.execute(
+            text("""
+                SELECT rolsuper, rolcreatedb, rolcreaterole, rolcanlogin,
+                       rolinherit, rolreplication, rolbypassrls
+                FROM pg_roles
+                WHERE rolname = :rolename;
+            """),
+            {"rolename": actual_user},
+        ).mappings().first()
+    except Exception as e:
+        raise RuntimeError(
+            f"Destructive operation rejected: failed to query pg_roles catalog for role '{actual_user}' "
+            f"on actual execution connection: {e}"
+        ) from e
+
+    if not role_record:
+        raise RuntimeError(
+            f"Destructive operation rejected: role '{actual_user}' not found in pg_roles catalog on actual connection."
+        )
+
+    # Check each required security attribute:
+    if role_record.get("rolsuper") is not False:
+        raise PermissionError(f"Security violation: runtime role '{actual_user}' has unexpected rolsuper=True attribute.")
+    if role_record.get("rolcreatedb") is not False:
+        raise PermissionError(f"Security violation: runtime role '{actual_user}' has unexpected rolcreatedb=True attribute.")
+    if role_record.get("rolcreaterole") is not False:
+        raise PermissionError(f"Security violation: runtime role '{actual_user}' has unexpected rolcreaterole=True attribute.")
+    if role_record.get("rolcanlogin") is not True:
+        raise PermissionError(f"Security violation: runtime role '{actual_user}' has unexpected rolcanlogin=False attribute.")
+    if role_record.get("rolinherit") is not False:
+        raise PermissionError(f"Security violation: runtime role '{actual_user}' has unexpected rolinherit=True attribute.")
+    if role_record.get("rolreplication") is not False:
+        raise PermissionError(f"Security violation: runtime role '{actual_user}' has unexpected rolreplication=True attribute.")
+    if role_record.get("rolbypassrls") is not False:
+        raise PermissionError(f"Security violation: runtime role '{actual_user}' has unexpected rolbypassrls=True attribute.")
+
+    # 11. Zero memberships in pg_auth_members
+    try:
+        membership_count = conn.execute(
+            text("""
+                SELECT count(*)
+                FROM pg_auth_members m
+                JOIN pg_roles r ON r.oid = m.member
+                WHERE r.rolname = :rolename;
+            """),
+            {"rolename": actual_user},
+        ).scalar()
+    except Exception as e:
+        raise RuntimeError(
+            f"Destructive operation rejected: failed to query pg_auth_members for role '{actual_user}' "
+            f"on actual execution connection: {e}"
+        ) from e
+
+    if membership_count is None:
+        raise RuntimeError(f"Destructive operation rejected: membership count query returned None for role '{actual_user}'.")
+
+    if membership_count > 0:
+        raise PermissionError(
+            f"Security violation: runtime role '{actual_user}' has {membership_count} active membership(s) in pg_auth_members. "
+            f"Zero memberships are required."
+        )
+
     # 10. Database Verification & Collision Checks on the actual connection
     actual_db_lower = actual_db.lower()
     if actual_db_lower != target_db:
@@ -888,7 +961,6 @@ def verify_database_isolation(
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] | None = None,
     expected_role: str = TEST_RUNTIME_ROLE,
-    **kwargs,
 ) -> DatabaseIdentity:
     """
     Central safety validator:
@@ -902,8 +974,10 @@ def verify_database_isolation(
     3. Unconditional Actual Connected Database Name Comparison: The target's connected
        current_database() cannot match the application database name under any circumstance
        (regardless of hostname, port, driver scheme, proxy, or alias).
-    4. Restricted Runtime Role Enforcement: When enforce_restricted_role=True, verifies
-       connected current_user against expected_role and rejects administrative/superuser roles.
+    4. Mandatory Restricted Runtime Role Enforcement: Verifies connected current_user against
+       expected_role, validates catalog security attributes (NOSUPERUSER, NOCREATEDB, NOCREATEROLE,
+       NOINHERIT, NOREPLICATION, NOBYPASSRLS, and zero pg_auth_members memberships), and rejects
+       administrative/superuser roles unconditionally.
     5. In-Database Sentinel Contract: Dedicated table `_scheme_saathi_db_sentinel` must exist,
        have is_disposable=TRUE, match expected_purpose, and match connected database name.
        A missing sentinel causes an immediate failure; test fixtures NEVER auto-provision it.
@@ -1003,7 +1077,6 @@ def safe_drop_all(
     app_url: str,
     purpose: str = REGULAR_TEST_PURPOSE,
     expected_role: str = TEST_RUNTIME_ROLE,
-    **kwargs,
 ) -> None:
     """
     Centralized gatekeeper for metadata.drop_all().
@@ -1029,7 +1102,6 @@ def safe_create_all(
     app_url: str,
     purpose: str = REGULAR_TEST_PURPOSE,
     expected_role: str = TEST_RUNTIME_ROLE,
-    **kwargs,
 ) -> None:
     """
     Centralized gatekeeper for metadata.create_all().
@@ -1055,7 +1127,6 @@ def safe_create_schema(
     app_url: str,
     purpose: str = MIGRATION_TEST_PURPOSE,
     expected_role: str = TEST_RUNTIME_ROLE,
-    **kwargs,
 ) -> None:
     """
     Centralized gatekeeper for schema creation.
@@ -1082,7 +1153,6 @@ def safe_drop_schema(
     app_url: str,
     purpose: str = MIGRATION_TEST_PURPOSE,
     expected_role: str = TEST_RUNTIME_ROLE,
-    **kwargs,
 ) -> None:
     """
     Centralized gatekeeper for schema drops.
@@ -1119,8 +1189,7 @@ def validate_database_target(
     target_label: str = "test database",
     enforce_opt_in: bool = True,
     opt_in_env_vars: Sequence[str] = REGULAR_TEST_OPT_IN_VARS,
-    enforce_restricted_role: bool = False,
-    expected_role: str | None = None,
+    expected_role: str = TEST_RUNTIME_ROLE,
 ) -> None:
     """Compatibility bridge routing callers to verify_database_isolation."""
     purpose = REGULAR_TEST_PURPOSE if "migration" not in target_label.lower() else MIGRATION_TEST_PURPOSE
@@ -1130,7 +1199,6 @@ def validate_database_target(
         expected_purpose=purpose,
         enforce_opt_in=enforce_opt_in,
         opt_in_env_vars=opt_in_env_vars,
-        enforce_restricted_role=enforce_restricted_role,
         expected_role=expected_role,
     )
 

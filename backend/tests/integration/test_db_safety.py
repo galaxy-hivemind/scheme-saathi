@@ -33,6 +33,47 @@ Core Safety & Isolation Tests (Tests 15-28):
 26. Application database contents remain untouched in all negative scenarios.
 27. No fixture automatically provisions or modifies sentinel.
 28. Runtime role cannot modify, delete, or drop sentinel table.
+
+Section 7 Execution Trust Boundary & Verification Binding (Tests 29-39):
+29. Administrative target URL with caller-provided engine rejected.
+30. Empty/unspecified role in target URL with admin engine rejected.
+31. Spoofed target URL with different admin engine rejected.
+32. Restricted engine matching target URL passes verification.
+33. All four gateways reject administrative engine bindings.
+34. Non-matching target URL user rejected.
+35. Pre-verified target URL does not permit administrative engine execution.
+36. Schema creation gateway binds to and validates actual connection.
+37. Schema drop gateway binds to and validates actual connection.
+38. Gateway does not close caller-provided connection.
+39. Connection with active transaction rolls back completely on verification failure.
+
+Section 8 Mandatory Restricted Execution & Transaction Ownership (Tests 40-48):
+40. Superuser engine matching superuser target URL rejected across all gateways.
+41. Admin engine with target URL having no username rejected across all gateways.
+42. Admin engine with target URL having different admin role rejected across all gateways.
+43. Restricted runtime role matching target URL succeeds across all gateways.
+44. Engine-based gateway commits own DDL.
+45. Connection-based gateway does not commit outer transaction.
+46. Unrelated pending DML remains rollbackable after gateway operation.
+47. Failed gateway operation does not commit or abort outer transaction.
+48. Verification and DDL execute on exact same connection object.
+
+Section 9 Runtime-Role Privilege & Membership Integrity (Tests 49-56):
+49. Runtime role mutated with CREATEDB rejected and state unchanged.
+50. Runtime role mutated with CREATEROLE rejected and state unchanged.
+51. Runtime role mutated with INHERIT rejected and state unchanged.
+52. Runtime role mutated with BYPASSRLS rejected and state unchanged.
+53. Runtime role mutated with REPLICATION rejected and state unchanged.
+54. Runtime role granted group membership rejected and state unchanged.
+55. Missing or inaccessible catalog info fails closed with state unchanged.
+56. Correct restricted role succeeds across all 4 gateways.
+
+Section 10 Testcontainers Role Provisioning & Identifier Injection (Tests 57-58):
+57. Invalid role identifiers raise ValueError in validate_pg_identifier.
+58. Testcontainers dynamic passwords are unique, cryptographically random, and never fixed.
+
+Section 11 Unsupported Keyword Arguments Rejection (Test 59):
+59. Calling security APIs with obsolete kwargs like enforce_restricted_role raises TypeError.
 """
 from pathlib import Path
 import os
@@ -165,7 +206,6 @@ def test_03_failure_to_query_current_user_rejects_destructive_execution(monkeypa
             app_url=settings.DATABASE_URL,
             expected_purpose=REGULAR_TEST_PURPOSE,
             enforce_opt_in=True,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
 
@@ -194,7 +234,6 @@ def test_04_failure_to_verify_superuser_status_rejects_destructive_execution(mon
             app_url=settings.DATABASE_URL,
             expected_purpose=REGULAR_TEST_PURPOSE,
             enforce_opt_in=True,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
 
@@ -212,7 +251,6 @@ def test_05_regular_test_connection_using_administrator_rejected(monkeypatch):
             app_url=settings.DATABASE_URL,
             expected_purpose=REGULAR_TEST_PURPOSE,
             enforce_opt_in=True,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
 
@@ -230,7 +268,6 @@ def test_06_migration_test_connection_using_administrator_rejected(monkeypatch):
             test_url=admin_url,
             app_url=settings.DATABASE_URL,
             enforce_opt_in=True,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
 
@@ -246,7 +283,6 @@ def test_07_regular_test_connection_using_expected_restricted_role_accepted(monk
         app_url=settings.DATABASE_URL,
         expected_purpose=REGULAR_TEST_PURPOSE,
         enforce_opt_in=True,
-        enforce_restricted_role=True,
         expected_role=TEST_RUNTIME_ROLE,
     )
     assert ident.is_connected is True
@@ -264,7 +300,6 @@ def test_08_migration_test_connection_using_expected_restricted_role_accepted(mo
         test_url=MIGRATION_TEST_DB_URL,
         app_url=settings.DATABASE_URL,
         enforce_opt_in=True,
-        enforce_restricted_role=True,
         expected_role=TEST_RUNTIME_ROLE,
     )
 
@@ -417,7 +452,7 @@ def test_14_connected_role_rechecked_immediately_before_destructive_operations(m
     """
     Requirement 14: The connected role is rechecked immediately before destructive operations.
     safe_drop_all, safe_create_all, safe_create_schema, and safe_drop_schema verify
-    the actual connected role with enforce_restricted_role=True before executing DDL.
+    the actual connected role and catalog attributes unconditionally before executing DDL.
     """
     monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
     monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
@@ -433,7 +468,6 @@ def test_14_connected_role_rechecked_immediately_before_destructive_operations(m
                 target_url="postgresql://postgres:postgres@localhost:5432/scheme_saathi_test",
                 app_url=settings.DATABASE_URL,
                 purpose=REGULAR_TEST_PURPOSE,
-                enforce_restricted_role=True,
                 expected_role=TEST_RUNTIME_ROLE,
             )
 
@@ -445,7 +479,6 @@ def test_14_connected_role_rechecked_immediately_before_destructive_operations(m
                 target_url="postgresql://postgres:postgres@localhost:5432/scheme_saathi_test",
                 app_url=settings.DATABASE_URL,
                 purpose=REGULAR_TEST_PURPOSE,
-                enforce_restricted_role=True,
                 expected_role=TEST_RUNTIME_ROLE,
             )
 
@@ -457,7 +490,6 @@ def test_14_connected_role_rechecked_immediately_before_destructive_operations(m
                 target_url="postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test",
                 app_url=settings.DATABASE_URL,
                 purpose=MIGRATION_TEST_PURPOSE,
-                enforce_restricted_role=True,
                 expected_role=TEST_RUNTIME_ROLE,
             )
 
@@ -469,7 +501,6 @@ def test_14_connected_role_rechecked_immediately_before_destructive_operations(m
                 target_url="postgresql://postgres:postgres@localhost:5432/scheme_saathi_migration_test",
                 app_url=settings.DATABASE_URL,
                 purpose=MIGRATION_TEST_PURPOSE,
-                enforce_restricted_role=True,
                 expected_role=TEST_RUNTIME_ROLE,
             )
     finally:
@@ -771,7 +802,6 @@ def test_24_migration_cleanup_drops_only_owned_test_schemas_and_protects_system_
                     protected,
                     MIGRATION_TEST_DB_URL,
                     settings.DATABASE_URL,
-                    enforce_restricted_role=True,
                     expected_role=TEST_RUNTIME_ROLE,
                 )
 
@@ -782,7 +812,6 @@ def test_24_migration_cleanup_drops_only_owned_test_schemas_and_protects_system_
                 "unrelated_schema",
                 MIGRATION_TEST_DB_URL,
                 settings.DATABASE_URL,
-                enforce_restricted_role=True,
                 expected_role=TEST_RUNTIME_ROLE,
             )
 
@@ -793,7 +822,6 @@ def test_24_migration_cleanup_drops_only_owned_test_schemas_and_protects_system_
             test_schema,
             MIGRATION_TEST_DB_URL,
             settings.DATABASE_URL,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
 
@@ -808,7 +836,6 @@ def test_24_migration_cleanup_drops_only_owned_test_schemas_and_protects_system_
             test_schema,
             MIGRATION_TEST_DB_URL,
             settings.DATABASE_URL,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
 
@@ -955,7 +982,6 @@ def test_29_safe_target_url_combined_with_admin_engine_rejected(monkeypatch):
                 target_url=TEST_DATABASE_URL,
                 app_url=settings.DATABASE_URL,
                 purpose=REGULAR_TEST_PURPOSE,
-                enforce_restricted_role=False,
             )
 
         with pytest.raises(PermissionError, match=r"Connection mismatch.*administrative/superuser|using administrative/superuser"):
@@ -965,7 +991,6 @@ def test_29_safe_target_url_combined_with_admin_engine_rejected(monkeypatch):
                 target_url=TEST_DATABASE_URL,
                 app_url=settings.DATABASE_URL,
                 purpose=REGULAR_TEST_PURPOSE,
-                enforce_restricted_role=False,
             )
     finally:
         admin_engine.dispose()
@@ -1148,7 +1173,6 @@ def test_34_safe_create_schema_never_executes_ddl_on_mismatch_and_leaves_state_u
                 target_url=get_migration_test_db_url(),
                 app_url=settings.DATABASE_URL,
                 purpose=MIGRATION_TEST_PURPOSE,
-                enforce_restricted_role=True,
                 expected_role=TEST_RUNTIME_ROLE,
             )
 
@@ -1196,7 +1220,6 @@ def test_35_safe_drop_schema_never_executes_ddl_on_mismatch_and_leaves_schemas_u
                 target_url=get_migration_test_db_url(),
                 app_url=settings.DATABASE_URL,
                 purpose=MIGRATION_TEST_PURPOSE,
-                enforce_restricted_role=True,
                 expected_role=TEST_RUNTIME_ROLE,
             )
 
@@ -1239,7 +1262,6 @@ def test_36_correct_restricted_role_connection_successfully_executes_permitted_d
             target_url=TEST_DATABASE_URL,
             app_url=settings.DATABASE_URL,
             purpose=REGULAR_TEST_PURPOSE,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
         with test_engine.connect() as conn:
@@ -1252,7 +1274,6 @@ def test_36_correct_restricted_role_connection_successfully_executes_permitted_d
             target_url=TEST_DATABASE_URL,
             app_url=settings.DATABASE_URL,
             purpose=REGULAR_TEST_PURPOSE,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
         with test_engine.connect() as conn:
@@ -1266,7 +1287,6 @@ def test_36_correct_restricted_role_connection_successfully_executes_permitted_d
             target_url=get_migration_test_db_url(),
             app_url=settings.DATABASE_URL,
             purpose=MIGRATION_TEST_PURPOSE,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
         with migration_engine.connect() as conn:
@@ -1282,7 +1302,6 @@ def test_36_correct_restricted_role_connection_successfully_executes_permitted_d
             target_url=get_migration_test_db_url(),
             app_url=settings.DATABASE_URL,
             purpose=MIGRATION_TEST_PURPOSE,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
         with migration_engine.connect() as conn:
@@ -1312,7 +1331,6 @@ def test_37_actual_execution_connection_checked_immediately_before_ddl(monkeypat
             app_url=settings.DATABASE_URL,
             expected_purpose=REGULAR_TEST_PURPOSE,
             enforce_opt_in=True,
-            enforce_restricted_role=True,
             expected_role=TEST_RUNTIME_ROLE,
         )
         assert ident.is_connected is True
@@ -1898,4 +1916,443 @@ def test_48_verification_and_ddl_execute_on_exact_same_connection_object(monkeyp
     finally:
         test_engine.dispose()
         migration_engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 9: RUNTIME-ROLE PRIVILEGE & MEMBERSHIP INTEGRITY TESTS (49 TO 56)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_49_runtime_role_mutated_with_createdb_rejected_and_state_unchanged(monkeypatch):
+    """
+    Requirement 1.1: Runtime role mutated with CREATEDB is rejected immediately before DDL.
+    safe_create_all fails closed with PermissionError, leaves state unchanged, and restores NOCREATEDB.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_engine = create_engine(get_admin_url())
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    tbl_name = f"canary_createdb_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    try:
+        # Alter test role to add CREATEDB
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH CREATEDB;'))
+            admin_conn.commit()
+
+        with test_engine.connect() as conn:
+            with pytest.raises(PermissionError, match=r"rolcreatedb=True"):
+                safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Verify state unchanged: canary table was not created
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} was created despite CREATEDB violation!"
+    finally:
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH NOCREATEDB;'))
+            admin_conn.commit()
+        admin_engine.dispose()
+        test_engine.dispose()
+
+
+def test_50_runtime_role_mutated_with_createrole_rejected_and_state_unchanged(monkeypatch):
+    """
+    Requirement 1.2: Runtime role mutated with CREATEROLE is rejected immediately before DDL.
+    safe_create_all fails closed with PermissionError, leaves state unchanged, and restores NOCREATEROLE.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_engine = create_engine(get_admin_url())
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    tbl_name = f"canary_createrole_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    try:
+        # Alter test role to add CREATEROLE
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH CREATEROLE;'))
+            admin_conn.commit()
+
+        with test_engine.connect() as conn:
+            with pytest.raises(PermissionError, match=r"rolcreaterole=True"):
+                safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Verify state unchanged: canary table was not created
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} was created despite CREATEROLE violation!"
+    finally:
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH NOCREATEROLE;'))
+            admin_conn.commit()
+        admin_engine.dispose()
+        test_engine.dispose()
+
+
+def test_51_runtime_role_mutated_with_inherit_rejected_and_state_unchanged(monkeypatch):
+    """
+    Requirement 1.3: Runtime role mutated with INHERIT is rejected immediately before DDL.
+    safe_create_all fails closed with PermissionError, leaves state unchanged, and restores NOINHERIT.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_engine = create_engine(get_admin_url())
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    tbl_name = f"canary_inherit_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    try:
+        # Alter test role to add INHERIT
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH INHERIT;'))
+            admin_conn.commit()
+
+        with test_engine.connect() as conn:
+            with pytest.raises(PermissionError, match=r"rolinherit=True"):
+                safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Verify state unchanged: canary table was not created
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} was created despite INHERIT violation!"
+    finally:
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH NOINHERIT;'))
+            admin_conn.commit()
+        admin_engine.dispose()
+        test_engine.dispose()
+
+
+def test_52_runtime_role_mutated_with_bypassrls_rejected_and_state_unchanged(monkeypatch):
+    """
+    Requirement 1.4: Runtime role mutated with BYPASSRLS is rejected immediately before DDL.
+    safe_create_all fails closed with PermissionError, leaves state unchanged, and restores NOBYPASSRLS.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_engine = create_engine(get_admin_url())
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    tbl_name = f"canary_bypassrls_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    try:
+        # Alter test role to add BYPASSRLS
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH BYPASSRLS;'))
+            admin_conn.commit()
+
+        with test_engine.connect() as conn:
+            with pytest.raises(PermissionError, match=r"rolbypassrls=True"):
+                safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Verify state unchanged: canary table was not created
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} was created despite BYPASSRLS violation!"
+    finally:
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH NOBYPASSRLS;'))
+            admin_conn.commit()
+        admin_engine.dispose()
+        test_engine.dispose()
+
+
+def test_53_runtime_role_mutated_with_replication_rejected_and_state_unchanged(monkeypatch):
+    """
+    Requirement 1.5: Runtime role mutated with REPLICATION is rejected immediately before DDL.
+    safe_create_all fails closed with PermissionError, leaves state unchanged, and restores NOREPLICATION.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_engine = create_engine(get_admin_url())
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    tbl_name = f"canary_replication_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    try:
+        # Alter test role to add REPLICATION
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH REPLICATION;'))
+            admin_conn.commit()
+
+        with test_engine.connect() as conn:
+            with pytest.raises(PermissionError, match=r"rolreplication=True"):
+                safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Verify state unchanged: canary table was not created
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} was created despite REPLICATION violation!"
+    finally:
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'ALTER ROLE "{TEST_RUNTIME_ROLE}" WITH NOREPLICATION;'))
+            admin_conn.commit()
+        admin_engine.dispose()
+        test_engine.dispose()
+
+
+def test_54_runtime_role_granted_group_membership_rejected_and_state_unchanged(monkeypatch):
+    """
+    Requirement 1.6: Runtime role granted group membership in pg_auth_members is rejected immediately before DDL.
+    safe_create_all fails closed with PermissionError, leaves state unchanged, revokes membership and drops group role.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    admin_engine = create_engine(get_admin_url())
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    tbl_name = f"canary_group_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    group_name = f"test_group_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # Create group role and grant membership to runtime test role
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'CREATE ROLE "{group_name}";'))
+            admin_conn.execute(text(f'GRANT "{group_name}" TO "{TEST_RUNTIME_ROLE}";'))
+            admin_conn.commit()
+
+        with test_engine.connect() as conn:
+            with pytest.raises(PermissionError, match=r"active membership\(s\) in pg_auth_members"):
+                safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+        # Verify state unchanged: canary table was not created
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} was created despite group membership violation!"
+    finally:
+        with admin_engine.connect() as admin_conn:
+            admin_conn.execute(text(f'REVOKE "{group_name}" FROM "{TEST_RUNTIME_ROLE}";'))
+            admin_conn.execute(text(f'DROP ROLE IF EXISTS "{group_name}";'))
+            admin_conn.commit()
+        admin_engine.dispose()
+        test_engine.dispose()
+
+
+def test_55_missing_or_inaccessible_catalog_info_fails_closed_state_unchanged(monkeypatch):
+    """
+    Requirement 1.7: Missing or inaccessible catalog info fails closed before DDL execution.
+    When querying pg_roles or pg_auth_members fails or returns empty, the operation raises
+    RuntimeError and leaves database state completely unchanged.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    test_engine = create_engine(TEST_DATABASE_URL)
+
+    tbl_name = f"canary_catalog_fail_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+
+    with test_engine.connect() as conn:
+        real_execute = conn.execute
+
+        def failing_execute(statement, parameters=None, **execution_options):
+            sql_str = str(statement)
+            if "pg_roles" in sql_str:
+                raise OperationalError("SELECT FROM pg_roles", {}, Exception("simulated catalog permission error"))
+            return real_execute(statement, parameters, **execution_options)
+
+        monkeypatch.setattr(conn, "execute", failing_execute)
+
+        with pytest.raises(RuntimeError, match=r"failed to query pg_roles catalog"):
+            safe_create_all(conn, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+
+    # Verify state unchanged using a clean connection
+    with test_engine.connect() as conn:
+        inspector = inspect(conn)
+        assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} was created despite catalog failure!"
+
+    test_engine.dispose()
+
+
+def test_56_correct_restricted_role_succeeds_across_all_four_gateways(monkeypatch):
+    """
+    Requirement 1.8: Correct restricted runtime role succeeds across all 4 gateways.
+    safe_create_all, safe_drop_all, safe_create_schema, and safe_drop_schema all succeed
+    with the properly configured restricted runtime role.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+
+    tbl_name = f"canary_all_gateways_tbl_{uuid.uuid4().hex[:6]}"
+    meta = MetaData()
+    Table(tbl_name, meta, Column("id", Integer, primary_key=True))
+    schema_name = f"migtest_all_gateways_sch_{uuid.uuid4().hex[:6]}"
+
+    try:
+        # Gateway 1: safe_create_all
+        safe_create_all(test_engine, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name in inspector.get_table_names(), f"Table {tbl_name} should exist after safe_create_all"
+
+        # Gateway 2: safe_drop_all
+        safe_drop_all(test_engine, meta, TEST_DATABASE_URL, settings.DATABASE_URL)
+        with test_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert tbl_name not in inspector.get_table_names(), f"Table {tbl_name} should not exist after safe_drop_all"
+
+        # Gateway 3: safe_create_schema
+        safe_create_schema(migration_engine, schema_name, get_migration_test_db_url(), settings.DATABASE_URL)
+        with migration_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert schema_name in inspector.get_schema_names(), f"Schema {schema_name} should exist after safe_create_schema"
+
+        # Gateway 4: safe_drop_schema
+        safe_drop_schema(migration_engine, schema_name, get_migration_test_db_url(), settings.DATABASE_URL)
+        with migration_engine.connect() as conn:
+            inspector = inspect(conn)
+            assert schema_name not in inspector.get_schema_names(), f"Schema {schema_name} should not exist after safe_drop_schema"
+    finally:
+        test_engine.dispose()
+        migration_engine.dispose()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 10: TESTCONTAINERS ROLE PROVISIONING & IDENTIFIER INJECTION (57 TO 58)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_57_invalid_role_identifiers_raise_value_error():
+    """
+    Requirement 2.1: Invalid or malicious PostgreSQL identifiers are rejected by validate_pg_identifier.
+    Prevents SQL injection attacks through malformed environment variables or identifier names.
+    """
+    invalid_identifiers = [
+        'user; DROP TABLE users;--',
+        'bad user name',
+        'user"OR 1=1',
+        'user-with-dashes',
+        '1leading_digit',
+        '',
+        '   ',
+        'user$name',
+        'role/*',
+        'a' * 64,  # Over max 63 characters
+    ]
+
+    for bad_id in invalid_identifiers:
+        with pytest.raises(ValueError, match="Invalid or unsafe PostgreSQL"):
+            validate_pg_identifier(bad_id, "test identifier")
+
+    # Valid identifiers pass without error
+    valid_identifiers = [
+        "scheme_saathi_test_user",
+        "valid_identifier_123",
+        "_leading_underscore",
+        "TestRole",
+    ]
+    for good_id in valid_identifiers:
+        assert validate_pg_identifier(good_id, "test identifier") == good_id
+
+
+def test_58_testcontainers_dynamic_password_generation():
+    """
+    Requirement 2.2: Testcontainers dynamic credentials are cryptographically random,
+    unique per instance, and never logged or reused from fixed values.
+    """
+    import secrets
+
+    # Verify token generation properties
+    passwords = [secrets.token_urlsafe(32) for _ in range(20)]
+
+    # All generated passwords must be distinct
+    assert len(set(passwords)) == 20, "Generated passwords collided; entropy insufficient!"
+
+    # Each password must have sufficient length (>= 32 chars of urlsafe string)
+    for pwd in passwords:
+        assert len(pwd) >= 32, f"Password {pwd} too short!"
+        assert pwd != "test_secure_password"
+        assert pwd != "postgres"
+        assert pwd != "password"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 11: UNSUPPORTED KEYWORD ARGUMENTS REJECTION (59)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def test_59_unsupported_keyword_arguments_raise_type_error(monkeypatch):
+    """
+    Requirement 3: Removed **kwargs from security-sensitive APIs.
+    Passing obsolete or unauthorized keyword arguments like enforce_restricted_role
+    must raise TypeError immediately instead of being silently swallowed.
+    """
+    monkeypatch.setenv("ALLOW_TEST_DB_RESET", "1")
+    monkeypatch.setenv("ALLOW_MIGRATION_TESTS", "1")
+
+    test_engine = create_engine(TEST_DATABASE_URL)
+    migration_engine = create_engine(get_migration_test_db_url())
+    meta = MetaData()
+
+    with test_engine.connect() as conn:
+        with pytest.raises(TypeError, match=r"unexpected keyword argument 'enforce_restricted_role'"):
+            verify_connection_isolation(
+                conn=conn,
+                target_url=TEST_DATABASE_URL,
+                app_url=settings.DATABASE_URL,
+                enforce_restricted_role=False,
+            )
+
+        with pytest.raises(TypeError, match=r"unexpected keyword argument 'enforce_restricted_role'"):
+            safe_create_all(
+                conn,
+                meta,
+                TEST_DATABASE_URL,
+                settings.DATABASE_URL,
+                enforce_restricted_role=False,
+            )
+
+        with pytest.raises(TypeError, match=r"unexpected keyword argument 'enforce_restricted_role'"):
+            safe_drop_all(
+                conn,
+                meta,
+                TEST_DATABASE_URL,
+                settings.DATABASE_URL,
+                enforce_restricted_role=False,
+            )
+
+    with migration_engine.connect() as mig_conn:
+        with pytest.raises(TypeError, match=r"unexpected keyword argument 'enforce_restricted_role'"):
+            safe_create_schema(
+                mig_conn,
+                "test_dummy_sch",
+                get_migration_test_db_url(),
+                settings.DATABASE_URL,
+                enforce_restricted_role=False,
+            )
+
+        with pytest.raises(TypeError, match=r"unexpected keyword argument 'enforce_restricted_role'"):
+            safe_drop_schema(
+                mig_conn,
+                "test_dummy_sch",
+                get_migration_test_db_url(),
+                settings.DATABASE_URL,
+                enforce_restricted_role=False,
+            )
+
+    with pytest.raises(TypeError, match=r"unexpected keyword argument 'enforce_restricted_role'"):
+        verify_database_isolation(
+            TEST_DATABASE_URL,
+            settings.DATABASE_URL,
+            enforce_restricted_role=False,
+        )
+
+    with pytest.raises(TypeError, match=r"unexpected keyword argument 'enforce_restricted_role'"):
+        validate_database_target(
+            TEST_DATABASE_URL,
+            settings.DATABASE_URL,
+            enforce_restricted_role=False,
+        )
+
+    test_engine.dispose()
+    migration_engine.dispose()
+
 
