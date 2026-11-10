@@ -100,7 +100,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             "VALIDATION_ERROR",
             "Request validation failed.",
             details,
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
         )
 
     @app.exception_handler(Exception)

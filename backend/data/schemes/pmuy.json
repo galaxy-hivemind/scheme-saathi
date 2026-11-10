@@ -1,0 +1,140 @@
+{
+  "scheme_code": "PMUY",
+  "name": "Pradhan Mantri Ujjwala Yojana",
+  "short_title": "PMUY 2.0",
+  "description": "Scheme to provide clean cooking fuel to rural and deprived households by distributing deposit-free LPG connections in the name of adult women.",
+  "ministry": "Ministry of Petroleum and Natural Gas",
+  "department": "LPG Division",
+  "category": "women_welfare",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Adult women belonging to poor / BPL households without an existing LPG connection",
+    "SC/ST households, PMAY beneficiaries, Antyodaya Anna Yojana families"
+  ],
+  "benefits": "Deposit-free 14.2 kg LPG connection comprising security deposit of cylinder, regulator, safety hose, installation charges, and first refill plus stove free of cost. Targeted refill subsidy of Rs. 300 per cylinder was formally notified for FY 2025-26 only.",
+  "official_url": "https://www.pmuy.gov.in/",
+  "application_url": "https://www.pmuy.gov.in/en/apply-online",
+  "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf",
+  "scheme_status": "pending_verification",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": null,
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Petroleum and Natural Gas, Government of India.",
+      "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Petroleum and Natural Gas",
+      "publication_date": "2021-08-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 1.1, Introduction and Administrative Ministry",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central welfare initiative promoting clean fuel adoption for women in all Indian states and UTs.",
+      "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Petroleum and Natural Gas",
+      "publication_date": "2021-08-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 1.2, Scope and Objectives",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Adult women of impoverished households lacking domestic LPG connection.",
+      "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Petroleum and Natural Gas",
+      "publication_date": "2021-08-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 2.1, Target Beneficiary Categories",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Deposit-free connection with initial refill and stove provided without cash outlay by the beneficiary.",
+      "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Petroleum and Natural Gas",
+      "publication_date": "2021-08-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 3.1, Financial Assistance Package",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official scheme portal and distributor online application hosted on pmuy.gov.in.",
+      "source_url": "https://www.pmuy.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Petroleum and Natural Gas",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Official Portal Homepage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Targeted refill subsidy of Rs. 300 per cylinder formally notified for FY 2025-26 under PIB PRID 2154132; active operational gazette for FY 2026-27 is pending publication.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2154132",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2025-03-07",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB Press Release PRID 2154132",
+      "verification_status": "outdated",
+      "verified_at": null
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": false,
+    "is_provisional": true,
+    "limitations": "Provisional criteria; detailed 14-point declaration, SECC deprivation, and BPL category sub-lists pending 2026 administrative notification.",
+    "all": [
+      {
+        "field": "applicant_gender",
+        "operator": "equals",
+        "value": "female"
+      },
+      {
+        "field": "applicant_age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "has_existing_lpg_connection",
+        "operator": "equals",
+        "value": false
+      }
+    ]
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar card of the adult woman applicant and adult family members.",
+      "is_mandatory": true,
+      "alternatives": [],
+      "issuing_authority": "UIDAI",
+      "guidance": "Aadhaar must be linked with active bank account for subsidy transfer.",
+      "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf"
+    },
+    {
+      "document_type": "ration_card",
+      "title": "Ration Card or BPL Certificate",
+      "description": "Document establishing family composition and economic status.",
+      "is_mandatory": true,
+      "alternatives": ["Self-declaration for migrant families as per Ujjwala 2.0 Annexure"],
+      "issuing_authority": "State Food and Civil Supplies Department",
+      "guidance": "Migrant workers may submit Annexure-I self-declaration in lieu of state ration card.",
+      "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf"
+    }
+  ]
+}
+

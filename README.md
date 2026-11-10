@@ -82,9 +82,9 @@ See [Development Workflow](docs/development-workflow.md) for full details.
 | Component | Technology |
 |---|---|
 | Backend | Python, FastAPI, SQLAlchemy, Pydantic |
-| Database | PostgreSQL (Supabase) |
+| Database | PostgreSQL (local instance or Supabase) |
 | AI | Google Gemini with function/tool calling |
 | Frontend | React, TypeScript, Vite |
-| Auth | Supabase Auth |
+| Auth | Native FastAPI (bcrypt password hashing + JWT access tokens) |
 | Storage | Supabase Storage |
 | Testing | Pytest (backend), Vitest (frontend) |

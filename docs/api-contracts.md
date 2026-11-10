@@ -50,10 +50,10 @@ All endpoints are prefixed with `/api/v1/`.
 
 ## Authentication
 
-All endpoints except `/health` and `/auth/*` require a valid Supabase JWT in the `Authorization` header:
+All endpoints except `/health` and `/auth/*` require a valid JWT Bearer access token in the `Authorization` header:
 
 ```
-Authorization: Bearer <supabase-jwt>
+Authorization: Bearer <access_token>
 ```
 
 ---
@@ -246,21 +246,75 @@ interface APIError {
 
 ---
 
+### Auth
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/auth/register` | None | Register new citizen account & create profile |
+| POST | `/auth/login` | None | Authenticate with email/password & receive JWT |
+| GET | `/auth/me` | JWT | Get current authenticated user identity |
+
+**POST /auth/register** Request body:
+```json
+{
+  "email": "citizen@example.com",
+  "password": "SecurePassword123!",
+  "full_name": "Ramesh Kumar",
+  "preferred_language": "hi"
+}
+```
+
+Response: `{ data: { "access_token": "...", "token_type": "bearer", "expires_in_seconds": 604800, "user_id": "...", "email": "..." } }`
+
+**POST /auth/login** Request body:
+```json
+{
+  "email": "citizen@example.com",
+  "password": "SecurePassword123!"
+}
+```
+
+Response: `{ data: { "access_token": "...", "token_type": "bearer", "expires_in_seconds": 604800, "user_id": "...", "email": "..." } }`
+
+**GET /auth/me** → `{ data: { "id": "...", "email": "...", "is_active": true, "created_at": "..." } }`
+
+---
+
 ### Profile
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/profile` | JWT | Get current user's profile |
-| POST | `/profile` | JWT | Create profile (first-time setup) |
-| PUT | `/profile` | JWT | Update profile fields |
+| POST | `/profile` | JWT | Create or complete profile (safe update if exists) |
+| PUT | `/profile` | JWT | Update profile fields progressively |
+| POST | `/profile/consent` | JWT | Record explicit user consent (grant) |
+| POST | `/profile/consent/revoke` | JWT | Explicitly revoke active consent |
+| GET | `/profile/consent` | JWT | List audit trail of recorded consents for user |
 
 **GET /profile** → `{ data: UserProfile }`
 
-**POST /profile** Request body:
+**POST /profile** Request body (creates or completes existing profile):
 ```json
 {
   "full_name": "Ramesh Kumar",
-  "preferred_language": "hi"
+  "preferred_language": "hi",
+  "state": "Uttar Pradesh",
+  "district": "Varanasi"
+}
+```
+
+**POST /profile/consent** Request body:
+```json
+{
+  "consent_type": "data_processing",
+  "consent_status": "given"
+}
+```
+
+**POST /profile/consent/revoke** Request body:
+```json
+{
+  "consent_type": "data_processing"
 }
 ```
 
@@ -268,16 +322,126 @@ interface APIError {
 
 ### Schemes
 
+Implemented in Phase 2. Provides authenticated citizen discovery and detail views over the authoritative scheme catalogue.
+
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/schemes` | JWT | Search/list schemes |
-| GET | `/schemes/{scheme_id}` | JWT | Scheme details |
+| GET | `/schemes` | JWT Bearer | Search, filter, and paginate schemes (lightweight summaries) |
+| GET | `/schemes/{scheme_id}` | JWT Bearer | Comprehensive scheme details with active documents and evidence |
 
-**GET /schemes** Query params:
-- `q` — search query (optional)
-- `category` — filter by category (optional)
-- `page` — pagination (default 1)
-- `limit` — results per page (default 20, max 50)
+#### `GET /schemes`
+
+**Query Parameters:**
+- `q` (string, optional): Full-text search string across scheme name, description, ministry, benefits, and target beneficiaries (PostgreSQL FTS English lexeme matching). Empty or punctuation-only strings are ignored cleanly.
+- `category` (string, optional): Filter by one of the 12 canonical scheme categories (`agriculture`, `education`, `health`, `housing`, `employment`, `women_welfare`, `children_welfare`, `senior_citizens`, `disability`, `financial_inclusion`, `social_security`, `skill_development`). Invalid categories return HTTP `422`.
+- `page` (integer, optional, default: `1`, minimum: `1`): Page number.
+- `limit` (integer, optional, default: `20`, minimum: `1`, maximum: `50`): Results per page.
+- `include_pending` (boolean, optional, default: `false`): By default, only schemes with `scheme_status = 'active'` are returned. Setting `true` also includes `pending_verification` schemes. Inactive schemes are always excluded.
+
+**Sorting:** Deterministic ordering by `name ASC, id ASC`.
+
+**Success Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "items": [
+      {
+        "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+        "scheme_code": "PM-KISAN",
+        "name": "Pradhan Mantri Kisan Samman Nidhi",
+        "ministry": "Ministry of Agriculture and Farmers Welfare",
+        "category": "agriculture",
+        "benefits": "₹6,000 per year paid in three equal instalments of ₹2,000 directly into the bank accounts of eligible farmer families.",
+        "target_beneficiaries": ["farmer_families", "small_farmers", "marginal_farmers"],
+        "geographic_scope": "central",
+        "official_url": "https://pmkisan.gov.in/",
+        "application_url": "https://pmkisan.gov.in/RegistrationFormNew.aspx",
+        "scheme_status": "active",
+        "last_retrieved_at": "2026-11-10T21:40:00Z",
+        "last_verified_at": "2026-11-10T21:40:00Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "limit": 20,
+    "pages": 1
+  },
+  "error": null,
+  "request_id": "c1f8a846-5b72-4d56-a991-8dc174825974"
+}
+```
+
+#### `GET /schemes/{scheme_id}`
+
+**Path Parameters:**
+- `scheme_id` (UUID): The unique primary key identifier of the scheme. Malformed UUIDs return HTTP `422`.
+
+**Visibility Rules:**
+- Inactive schemes (`scheme_status = 'inactive'`) return HTTP `404 Not Found`.
+- Schemes with `scheme_status = 'pending_verification'` return HTTP `404 Not Found` unless explicitly queried with `?include_pending=true`.
+- Active schemes return HTTP `200 OK`.
+
+**Security Note:** Internal eligibility rule JSON (`rules` AST) is deliberately excluded from the citizen detail endpoint to protect evaluator state and keep payloads lean.
+
+**Success Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+    "scheme_code": "PM-KISAN",
+    "name": "Pradhan Mantri Kisan Samman Nidhi",
+    "description": "Central sector scheme providing income support of Rs. 6,000 per year to all landholding farmer families having cultivable landholding in their names.",
+    "ministry": "Ministry of Agriculture and Farmers Welfare",
+    "category": "agriculture",
+    "benefits": "₹6,000 per year paid in three equal instalments of ₹2,000 directly into the bank accounts of eligible farmer families.",
+    "target_beneficiaries": ["farmer_families", "small_farmers", "marginal_farmers"],
+    "geographic_scope": "central",
+    "official_url": "https://pmkisan.gov.in/",
+    "application_url": "https://pmkisan.gov.in/RegistrationFormNew.aspx",
+    "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2330414",
+    "source_evidence": [
+      {
+        "claim": "scheme_existence",
+        "source_type": "official_portal",
+        "source_url": "https://pmkisan.gov.in/",
+        "title": "PM Kisan Samman Nidhi Official Portal",
+        "reference_number": null,
+        "published_date": "2019-02-01",
+        "retrieved_at": "2026-11-10T21:40:00Z",
+        "verification_status": "verified",
+        "verified_at": "2026-11-10T21:40:00Z",
+        "verified_by": "editorial_team",
+        "excerpt": "Under the Scheme, the entire financial liability towards transfer of benefit to eligible beneficiaries is borne by the Government of India."
+      }
+    ],
+    "last_retrieved_at": "2026-11-10T21:40:00Z",
+    "last_verified_at": "2026-11-10T21:40:00Z",
+    "scheme_status": "active",
+    "required_documents": [
+      {
+        "id": "b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e",
+        "document_type": "aadhaar",
+        "is_mandatory": true,
+        "guidance": "Aadhaar number seeded with bank account is mandatory for PM-KISAN DBT transfers.",
+        "source_url": "https://pmkisan.gov.in/",
+        "last_verified_at": "2026-11-10T21:40:00Z",
+        "is_active": true
+      }
+    ],
+    "created_at": "2026-11-10T21:45:00Z",
+    "updated_at": "2026-11-10T21:45:00Z"
+  },
+  "error": null,
+  "request_id": "893c524b-325b-42fa-9486-1df95e4ad0c7"
+}
+```
+
+**Common Error Responses:**
+- `401 Unauthorized`: Missing or expired Bearer token in `Authorization` header.
+- `404 Not Found`: Scheme ID does not exist or is inactive / pending verification (when not allowed).
+- `422 Unprocessable Entity`: Malformed UUID or invalid filter category.
 
 ---
 
