@@ -28,6 +28,8 @@ build/
 .next/
 .nuxt/
 out/
+.vite/
+
 
 # Editor and operating system
 .DS_Store
