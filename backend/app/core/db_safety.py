@@ -443,6 +443,13 @@ def setup_test_roles(
                 conn.execute(text(f'GRANT CONNECT, TEMPORARY ON DATABASE "{test_db}" TO "{validated_role}";'))
                 if needs_schema_create:
                     conn.execute(text(f'GRANT CREATE ON DATABASE "{test_db}" TO "{validated_role}";'))
+                try:
+                    target_admin_url = make_url(admin_url).set(database=test_db)
+                    with create_engine(target_admin_url).connect() as db_conn:
+                        db_conn.execute(text("REVOKE EXECUTE ON FUNCTION pg_control_system() FROM PUBLIC;"))
+                        db_conn.commit()
+                except Exception:
+                    pass
 
         conn.commit()
 
