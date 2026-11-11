@@ -2,7 +2,7 @@
 Beneficiary profile model for storing family members under an authenticated citizen account.
 Used for determining welfare scheme eligibility for relatives (father, mother, spouse, children, etc.).
 """
-from typing import TYPE_CHECKING, Optional, Dict, Any
+from typing import TYPE_CHECKING, Optional, Dict, Any, List
 from datetime import date
 from decimal import Decimal
 import uuid
@@ -14,6 +14,8 @@ from app.database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.user import User
+    from app.models.citizen_document import CitizenDocument
+    from app.models.application_draft import ApplicationDraft
 
 ALLOWED_RELATIONSHIPS = (
     "father",
@@ -91,6 +93,16 @@ class BeneficiaryProfile(Base, TimestampMixin):
     user: Mapped["User"] = orm_relationship(
         "User",
         back_populates="beneficiaries",
+    )
+    documents: Mapped[List["CitizenDocument"]] = orm_relationship(
+        "CitizenDocument",
+        back_populates="beneficiary",
+        cascade="all, delete-orphan",
+    )
+    application_drafts: Mapped[List["ApplicationDraft"]] = orm_relationship(
+        "ApplicationDraft",
+        back_populates="beneficiary",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
