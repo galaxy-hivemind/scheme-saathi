@@ -162,4 +162,3 @@ def mark_all_as_read(db: Session, current_user: User) -> int:
     result = db.execute(stmt)
     db.commit()
     return result.rowcount or 0
-

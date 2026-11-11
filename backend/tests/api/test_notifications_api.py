@@ -168,4 +168,3 @@ def test_notifications_anti_idor_isolation(client, seeded_db):
     # User B attempts to mark User A's notification as read -> 403 Forbidden
     res_read_b = client.put(f"/api/v1/notifications/{notif_id}/read", headers=headers_b)
     assert res_read_b.status_code == 403
-

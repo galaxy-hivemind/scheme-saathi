@@ -164,4 +164,3 @@ def test_tracking_anti_idor_isolation(client, seeded_db):
     # User B attempts to sync status -> 403 Forbidden
     res_sync_b = client.post(f"/api/v1/tracking/{draft_id}/sync", headers=headers_b)
     assert res_sync_b.status_code == 403
-

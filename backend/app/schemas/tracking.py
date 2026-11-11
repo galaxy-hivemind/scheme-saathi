@@ -54,4 +54,3 @@ class ApplicationTimelineResponse(BaseModel):
     history: List[StatusHistoryItemResponse]
     created_at: datetime
     updated_at: datetime
-
