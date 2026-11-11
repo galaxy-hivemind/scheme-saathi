@@ -20,6 +20,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.docker.example
 
 # Frontend
 node_modules/
