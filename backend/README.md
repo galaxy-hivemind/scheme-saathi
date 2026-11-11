@@ -287,6 +287,36 @@ curl -X GET "http://localhost:8000/api/v1/schemes/<scheme_uuid>" \
 ```
 *Note: Inactive schemes return 404. Pending verification schemes return 404 unless `include_pending=true` is set. The response excludes internal rule AST to protect evaluator state.*
 
+## Conversational Intake & AI Agent (Phase 3 / Increment 2)
+
+Conversational assistance powered by Google Gemini (`gemini-3.8-flash`) or local deterministic fallback.
+
+### 1. Chat Intake
+```bash
+curl -X POST "http://localhost:8000/api/v1/agent/chat" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Meri maa ke liye kaunsi schemes hain? Umra 62 saal hai, gaon mein rehti hain.", "language": "hi"}'
+```
+
+### 2. Action Confirmation (Independent Zero-Trust Write)
+```bash
+curl -X POST "http://localhost:8000/api/v1/agent/actions/<action_uuid>/confirm" \
+  -H "Authorization: Bearer <token>"
+```
+
+### 3. Action Cancellation
+```bash
+curl -X POST "http://localhost:8000/api/v1/agent/actions/<action_uuid>/cancel" \
+  -H "Authorization: Bearer <token>"
+```
+
+### 4. Conversation History
+```bash
+curl -X GET "http://localhost:8000/api/v1/agent/conversations" \
+  -H "Authorization: Bearer <token>"
+```
+
 ## Seeding Government Scheme Data
 
 Seed files for central welfare schemes reside in `backend/data/schemes/`.

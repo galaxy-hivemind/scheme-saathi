@@ -8,6 +8,7 @@ from app.models.beneficiary_profile import BeneficiaryProfile
 from app.models.scheme import Scheme
 from app.models.scheme_rule_version import SchemeRuleVersion
 from app.models.scheme_document import SchemeDocument
+from app.models.chat import ChatConversation, ChatMessage, PendingAction
 
 __all__ = [
     "User",
@@ -17,4 +18,7 @@ __all__ = [
     "Scheme",
     "SchemeRuleVersion",
     "SchemeDocument",
+    "ChatConversation",
+    "ChatMessage",
+    "PendingAction",
 ]
