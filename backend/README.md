@@ -368,6 +368,25 @@ curl -X GET "http://localhost:8000/api/v1/notifications?is_read=false" \
   -H "Authorization: Bearer <token>"
 ```
 
+## Document OCR & Text Extraction (Phase 5 & 6b)
+
+Scheme Saathi includes an intelligent, privacy-preserving document text extraction engine (`app/ocr/`):
+
+- **Digital PDFs:** Extracted with high performance and zero OS binary dependencies via `pypdf`.
+- **Scanned Images:** Optical character recognition via `Pillow` and `pytesseract`.
+- **Graceful Host Degradation:** If the host system lacks the `tesseract` CLI binary, the service logs a warning and returns `ocr_status = "UNAVAILABLE"` without throwing 500 errors.
+- **PII Masking:** Automatically masks the first 8 digits of Aadhaar numbers (`XXXXXXXX1234`) and bank account numbers (`XXXXXXXX4321`).
+- **Confirmation Gate:** Extracted values are never written directly to citizen profiles; they are returned as proposals or staged via `PendingAction` for explicit citizen review.
+
+```bash
+# Optional: Install Tesseract CLI for raster image OCR
+# macOS:
+brew install tesseract tesseract-lang
+
+# Ubuntu/Debian:
+apt-get install -y tesseract-ocr tesseract-ocr-hin
+```
+
 ## Seeding Government Scheme Data
 
 Seed files for central welfare schemes reside in `backend/data/schemes/`.

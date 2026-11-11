@@ -184,3 +184,61 @@ The Citizen Documents module provides secure, zero-trust document upload, integr
   "message": "Document deleted successfully."
 }
 ```
+
+---
+
+### 7. Extract Document Text & Demographics (OCR)
+`POST /api/v1/documents/{document_id}/ocr`
+
+Extracts machine-readable text and structured demographic fields from an uploaded document using `pypdf` (digital PDFs) or `pytesseract` + `Pillow` (scanned images).
+
+**Headers:** `Authorization: Bearer <jwt>`, `Content-Type: application/json`
+
+**Request Body (Optional):**
+```json
+{
+  "stage_pending_action": true
+}
+```
+
+**Security & Privacy Guarantees:**
+- **PII Masking:** First 8 digits of Aadhaar UIDs are masked (`XXXXXXXX1234`). Full 12-digit numbers are never stored in plaintext.
+- **Zero Direct Profile Writes:** Extracted values are treated as proposals. If `stage_pending_action=true`, a durable `PendingAction` is staged in PostgreSQL. No profile changes occur until the citizen explicitly calls `POST /api/v1/agent/actions/{action_id}/confirm`.
+- **Zero Legal Authenticity Claims:** Returns explicit statutory notice clarifying that extraction is an accessibility feature, not legal verification.
+
+**Response (`200 OK`):**
+```json
+{
+  "success": true,
+  "data": {
+    "document_id": "e4b3c2d1-7a8b-4c9d-8e1f-2a3b4c5d6e7f",
+    "document_type": "income_certificate",
+    "ocr_status": "COMPLETED",
+    "extraction_engine": "pypdf_digital",
+    "raw_text_snippet": "OFFICE OF THE TEHSILDAR... ANNUAL INCOME: Rs. 1,20,000...",
+    "extracted_fields": {
+      "annual_family_income": 120000,
+      "certificate_number": "INC/MH/2026/894123",
+      "issuing_authority": "Tehsildar",
+      "issue_date": "2026-01-10"
+    },
+    "confidence_score": 0.95,
+    "pii_masked": true,
+    "pending_action_id": "f5a2b1c0-6d7e-4f8a-9b0c-1d2e3f4a5b6c",
+    "disclaimer": "Notice: OCR data extraction is an accessibility assistance feature. It does not certify the legal authenticity of this document.",
+    "extracted_at": "2026-11-11T12:00:00Z"
+  },
+  "message": "Document text and demographic fields extracted successfully."
+}
+```
+
+---
+
+### 8. Get Document OCR Metadata
+`GET /api/v1/documents/{document_id}/ocr`
+
+Retrieves previously persisted OCR metadata from `citizen_documents.extracted_metadata` without re-running the extraction engine.
+
+**Headers:** `Authorization: Bearer <jwt>`
+
+**Response (`200 OK`):** Returns `OCRExtractionResponse`.
