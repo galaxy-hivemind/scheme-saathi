@@ -11,6 +11,7 @@ from app.database.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.user_profile import UserProfile
     from app.models.user_consent import UserConsent
+    from app.models.beneficiary_profile import BeneficiaryProfile
 
 
 class User(Base, TimestampMixin):
@@ -56,4 +57,9 @@ class User(Base, TimestampMixin):
         "UserConsent",
         back_populates="user",
         passive_deletes=True,
+    )
+    beneficiaries: Mapped[List["BeneficiaryProfile"]] = relationship(
+        "BeneficiaryProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
