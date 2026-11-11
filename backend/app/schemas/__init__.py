@@ -16,6 +16,12 @@ from app.schemas.profile import (
     UserConsentRevokeRequest,
     UserConsentResponse,
 )
+from app.schemas.beneficiary import (
+    BeneficiaryRelationship,
+    BeneficiaryCreate,
+    BeneficiaryUpdate,
+    BeneficiaryResponse,
+)
 from app.schemas.eligibility import (
     TriStateStatus,
     EligibilityResultStatus,
@@ -42,6 +48,10 @@ __all__ = [
     "UserConsentCreate",
     "UserConsentRevokeRequest",
     "UserConsentResponse",
+    "BeneficiaryRelationship",
+    "BeneficiaryCreate",
+    "BeneficiaryUpdate",
+    "BeneficiaryResponse",
     "TriStateStatus",
     "EligibilityResultStatus",
     "ConditionResult",
