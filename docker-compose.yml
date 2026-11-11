@@ -1,0 +1,89 @@
+# Scheme Saathi — Multi-Container Production Orchestration
+# Services: PostgreSQL 16 Alpine, FastAPI Backend (with Tesseract OCR), React Frontend (Nginx Reverse Proxy)
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: scheme-saathi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-scheme_saathi}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-scheme_saathi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - scheme-saathi-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: scheme-saathi-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-scheme_saathi}
+      APP_ENV: ${APP_ENV:-development}
+      APP_NAME: "Scheme Saathi API"
+      DEBUG: ${DEBUG:-true}
+      SECRET_KEY: ${SECRET_KEY:-scheme-saathi-production-docker-secret-key-32chars}
+      JWT_SECRET: ${JWT_SECRET:-scheme-saathi-production-docker-jwt-secret-key-32chars}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-10080}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      ALLOWED_ORIGINS: '["http://localhost:3000", "http://localhost:8000", "http://localhost:5173", "http://localhost"]'
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      AUTO_SEED_SCHEMES: ${AUTO_SEED_SCHEMES:-true}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - scheme-saathi-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    container_name: scheme-saathi-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - scheme-saathi-net
+
+volumes:
+  postgres_data:
+    name: scheme-saathi-pgdata
+
+networks:
+  scheme-saathi-net:
+    driver: bridge
+    name: scheme-saathi-network

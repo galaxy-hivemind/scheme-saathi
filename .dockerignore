@@ -1,0 +1,10 @@
+.git/
+.github/
+.gemini/
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+frontend/node_modules/
+frontend/dist/
+*.log
+.DS_Store
