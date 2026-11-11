@@ -12,6 +12,8 @@ from sqlalchemy import select, and_
 
 from app.core.exceptions import NotFoundError, ValidationError, ConflictError
 from app.models.user import User
+from app.models.user_profile import UserProfile
+from app.models.beneficiary_profile import BeneficiaryProfile
 from app.models.application_draft import ApplicationDraft
 from app.models.scheme import Scheme
 from app.schemas.application import (
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 def _build_application_response(draft: ApplicationDraft, scheme: Scheme, target_name: str) -> ApplicationDraftResponse:
     """Helper to assemble ApplicationDraftResponse with denormalized scheme and applicant details."""
+    now_utc = datetime.now(timezone.utc)
     return ApplicationDraftResponse(
         id=draft.id,
         user_id=draft.user_id,
@@ -42,8 +45,8 @@ def _build_application_response(draft: ApplicationDraft, scheme: Scheme, target_
         notes=draft.notes,
         external_reference_number=draft.external_reference_number,
         submitted_at=draft.submitted_at,
-        created_at=draft.created_at,
-        updated_at=draft.updated_at,
+        created_at=draft.created_at or now_utc,
+        updated_at=draft.updated_at or now_utc,
     )
 
 
@@ -67,7 +70,7 @@ def create_application_draft(
 
     # 1. Resolve target applicant and extract demographic snapshot
     if beneficiary_id is not None:
-        ben = beneficiary_service.get_beneficiary_by_id(db, beneficiary_id, current_user.id)
+        ben = beneficiary_service.get_beneficiary(db, current_user, beneficiary_id)
         target_name = ben.full_name
         demographics: Dict[str, Any] = {
             "applicant_type": "beneficiary",
@@ -107,11 +110,22 @@ def create_application_draft(
             scheme_id=scheme_id,
             beneficiary_id=beneficiary_id,
         )
+        status_val = (
+            elig_result.overall_status.value
+            if hasattr(elig_result.overall_status, "value")
+            else str(getattr(elig_result, "overall_status", "UNKNOWN"))
+        )
+        result_val = (
+            elig_result.result.value
+            if hasattr(elig_result.result, "value")
+            else str(getattr(elig_result, "result", "insufficient_information"))
+        )
         demographics["eligibility_snapshot"] = {
-            "status": elig_result.status,
-            "rule_version": elig_result.rule_version,
-            "missing_fields": elig_result.missing_fields,
-            "reasons": elig_result.reasons,
+            "status": status_val,
+            "result": result_val,
+            "rule_version": getattr(elig_result, "rule_version", 1),
+            "missing_fields": getattr(elig_result, "missing_fields", []),
+            "reasons": getattr(elig_result, "reasons", []),
         }
     except Exception as e:
         logger.warning(f"Could not compute eligibility snapshot for draft: {e}")
@@ -183,10 +197,15 @@ def get_application_draft_by_id(
 
     scheme = scheme_service.get_scheme_by_id(db, draft.scheme_id)
     if draft.beneficiary_id is not None:
-        ben = beneficiary_service.get_beneficiary_by_id(db, draft.beneficiary_id, user_id)
-        target_name = ben.full_name
+        ben = db.scalar(
+            select(BeneficiaryProfile).where(
+                BeneficiaryProfile.id == draft.beneficiary_id,
+                BeneficiaryProfile.user_id == user_id,
+            )
+        )
+        target_name = ben.full_name if ben else "Beneficiary"
     else:
-        prof = draft.user.profile if draft.user else None
+        prof = db.scalar(select(UserProfile).where(UserProfile.user_id == user_id))
         target_name = prof.full_name if prof and prof.full_name else "Self"
 
     return _build_application_response(draft, scheme, target_name)
@@ -213,8 +232,13 @@ def list_application_drafts(
     for draft in drafts:
         scheme = scheme_service.get_scheme_by_id(db, draft.scheme_id)
         if draft.beneficiary_id is not None:
-            ben = beneficiary_service.get_beneficiary_by_id(db, draft.beneficiary_id, current_user.id)
-            target_name = ben.full_name
+            ben = db.scalar(
+                select(BeneficiaryProfile).where(
+                    BeneficiaryProfile.id == draft.beneficiary_id,
+                    BeneficiaryProfile.user_id == current_user.id,
+                )
+            )
+            target_name = ben.full_name if ben else "Beneficiary"
         else:
             prof = current_user.profile
             target_name = prof.full_name if prof and prof.full_name else "Self"
@@ -255,8 +279,13 @@ def update_application_draft(
 
     scheme = scheme_service.get_scheme_by_id(db, draft.scheme_id)
     if draft.beneficiary_id is not None:
-        ben = beneficiary_service.get_beneficiary_by_id(db, draft.beneficiary_id, current_user.id)
-        target_name = ben.full_name
+        ben = db.scalar(
+            select(BeneficiaryProfile).where(
+                BeneficiaryProfile.id == draft.beneficiary_id,
+                BeneficiaryProfile.user_id == current_user.id,
+            )
+        )
+        target_name = ben.full_name if ben else "Beneficiary"
     else:
         prof = current_user.profile
         target_name = prof.full_name if prof and prof.full_name else "Self"
@@ -302,8 +331,13 @@ def submit_external_application(
 
     scheme = scheme_service.get_scheme_by_id(db, draft.scheme_id)
     if draft.beneficiary_id is not None:
-        ben = beneficiary_service.get_beneficiary_by_id(db, draft.beneficiary_id, current_user.id)
-        target_name = ben.full_name
+        ben = db.scalar(
+            select(BeneficiaryProfile).where(
+                BeneficiaryProfile.id == draft.beneficiary_id,
+                BeneficiaryProfile.user_id == current_user.id,
+            )
+        )
+        target_name = ben.full_name if ben else "Beneficiary"
     else:
         prof = current_user.profile
         target_name = prof.full_name if prof and prof.full_name else "Self"

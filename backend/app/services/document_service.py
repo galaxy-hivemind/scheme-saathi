@@ -48,8 +48,9 @@ def sanitize_filename(filename: str) -> str:
     if not filename:
         return "document.pdf"
 
-    # Strip directory components
-    base_name = os.path.basename(filename).strip()
+    # Normalize Windows backslashes and strip directory components
+    normalized = filename.replace("\\", "/")
+    base_name = os.path.basename(normalized).strip()
 
     # Remove null bytes, path traversal sequences
     base_name = base_name.replace("\x00", "").replace("..", "")
@@ -59,6 +60,8 @@ def sanitize_filename(filename: str) -> str:
     # Match stem and extension
     p = Path(base_name)
     ext = p.suffix.lower()
+    if not ext:
+        ext = ".pdf"
     stem = p.stem
 
     # Sanitize stem: allow only alphanumeric, underscores, hyphens, and spaces
@@ -134,7 +137,7 @@ def save_uploaded_document(
 
     # Validate beneficiary ownership if specified
     if beneficiary_id is not None:
-        beneficiary_service.get_beneficiary_by_id(db, beneficiary_id, current_user.id)
+        beneficiary_service.get_beneficiary(db, current_user, beneficiary_id)
 
     raw_filename = file.filename or "upload.pdf"
     safe_filename = sanitize_filename(raw_filename)
@@ -150,6 +153,7 @@ def save_uploaded_document(
     total_bytes = 0
     header_checked = False
     verified_mime = ""
+    max_upload_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
     try:
         with open(dest_path, "wb") as f_out:
@@ -163,7 +167,7 @@ def save_uploaded_document(
                     header_checked = True
 
                 total_bytes += len(chunk)
-                if total_bytes > MAX_UPLOAD_BYTES:
+                if total_bytes > max_upload_bytes:
                     raise PayloadTooLargeError(
                         f"File size exceeds maximum allowed limit of {settings.MAX_UPLOAD_SIZE_MB}MB."
                     )
@@ -295,7 +299,7 @@ def get_checklist(
 
     # Resolve applicant target name
     if beneficiary_id is not None:
-        ben = beneficiary_service.get_beneficiary_by_id(db, beneficiary_id, current_user.id)
+        ben = beneficiary_service.get_beneficiary(db, current_user, beneficiary_id)
         target_name = ben.full_name
     else:
         target_name = (
