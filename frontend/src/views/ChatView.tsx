@@ -3,6 +3,10 @@ import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { PendingAction } from '../types';
+import { SpeechPlayerButton } from '../components/SpeechPlayerButton';
+import { VoiceVisualizerModal } from '../components/VoiceVisualizerModal';
+import { SpeechRecognizer, isSpeechRecognitionSupported } from '../utils/speechRecognition';
+import { speechSynthesizer } from '../utils/speechSynthesis';
 import {
   Sparkles,
   Send,
@@ -16,6 +20,7 @@ import {
   User,
   Bot,
   Loader2,
+  Volume2,
 } from 'lucide-react';
 
 interface LocalMessage {
@@ -35,7 +40,13 @@ export const ChatView: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [autoRead, setAutoRead] = useState<boolean>(false);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState<boolean>(false);
+  const [interimTranscript, setInterimTranscript] = useState<string>('');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recognizerRef = useRef<SpeechRecognizer | null>(null);
 
   // Initial welcome message
   useEffect(() => {
@@ -64,44 +75,64 @@ export const ChatView: React.FC = () => {
 
   // Web Speech API Voice Input
   const handleVoiceInput = () => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      alert(
+    if (!isSpeechRecognitionSupported()) {
+      setVoiceError(
         language === 'hi'
-          ? 'आपके ब्राउज़र में वॉइस रिकॉग्निशन समर्थित नहीं है। कृपया लिखकर प्रश्न पूछें।'
+          ? 'आपके ब्राउज़र में आवाज़ पहचान (Voice Recognition) समर्थित नहीं है। कृपया टाइप करके प्रश्न पूछें।'
           : 'Speech recognition is not supported in your browser. Please type your message.'
       );
+      setTimeout(() => setVoiceError(null), 5000);
       return;
     }
 
     if (isListening) {
+      recognizerRef.current?.stop();
       setIsListening(false);
+      setIsVoiceModalOpen(false);
       return;
     }
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
+    setInterimTranscript('');
+    setIsVoiceModalOpen(true);
 
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onerror = () => setIsListening(false);
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        if (transcript) {
+    const recognizer = new SpeechRecognizer(
+      {
+        onStart: () => setIsListening(true),
+        onInterimResult: (transcript) => {
+          setInterimTranscript(transcript);
+        },
+        onFinalResult: (transcript) => {
+          setInterimTranscript(transcript);
           setInputText((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        }
-      };
+        },
+        onError: (err) => {
+          console.warn('Speech recognition error:', err);
+          setIsListening(false);
+        },
+        onEnd: () => {
+          setIsListening(false);
+        },
+      },
+      { lang: language === 'hi' ? 'hi-IN' : 'en-IN' }
+    );
 
-      recognition.start();
-    } catch (err) {
-      console.error('Speech error:', err);
-      setIsListening(false);
+    recognizerRef.current = recognizer;
+    recognizer.start();
+  };
+
+  const handleCloseVoiceModal = () => {
+    recognizerRef.current?.stop();
+    setIsVoiceModalOpen(false);
+    setIsListening(false);
+  };
+
+  const handleConfirmVoiceModal = () => {
+    recognizerRef.current?.stop();
+    setIsVoiceModalOpen(false);
+    setIsListening(false);
+    if (interimTranscript.trim()) {
+      handleSendMessage(interimTranscript.trim());
+      setInterimTranscript('');
     }
   };
 
@@ -134,6 +165,13 @@ export const ChatView: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, botMsg]);
+
+      // If autoRead is enabled, speak the assistant's reply automatically
+      if (autoRead && data.message) {
+        speechSynthesizer.speak(data.message, {
+          lang: language === 'hi' ? 'hi-IN' : 'en-IN',
+        });
+      }
     } catch (err: any) {
       console.error('Chat error:', err);
       const errMsg: LocalMessage = {
@@ -195,6 +233,61 @@ export const ChatView: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] max-w-4xl mx-auto bg-white border-x border-slate-200">
+      {/* Subheader Controls */}
+      <div className="px-4 py-2 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between text-xs">
+        <div className="flex items-center space-x-1.5 text-slate-700">
+          <Sparkles className="w-3.5 h-3.5 text-orange-600" />
+          <span className="font-semibold">
+            {language === 'hi' ? 'योजना साथी AI सहायक' : 'Scheme Saathi AI Assistant'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setAutoRead(!autoRead)}
+          className={`flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-semibold transition-all ${
+            autoRead
+              ? 'bg-orange-100 text-orange-700 border border-orange-300 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/60'
+          }`}
+          title={language === 'hi' ? 'उत्तर स्वतः सुनें' : 'Auto-read assistant responses'}
+          aria-label={
+            autoRead
+              ? language === 'hi'
+                ? 'ऑटो-रीड चालू'
+                : 'Auto-Read On'
+              : language === 'hi'
+              ? 'ऑटो-रीड'
+              : 'Auto-Read'
+          }
+        >
+          <Volume2 className="w-3.5 h-3.5" />
+          <span>
+            {language === 'hi'
+              ? autoRead
+                ? 'ऑटो-रीड चालू'
+                : 'ऑटो-रीड'
+              : autoRead
+              ? 'Auto-Read On'
+              : 'Auto-Read'}
+          </span>
+        </button>
+      </div>
+
+      {/* Voice Error Notification Toast */}
+      {voiceError && (
+        <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-200 text-rose-800 text-xs flex items-center justify-between animate-fade-in">
+          <span>{voiceError}</span>
+          <button
+            type="button"
+            onClick={() => setVoiceError(null)}
+            className="text-rose-500 hover:text-rose-700 font-bold ml-2"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* Chat Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
         {messages.map((msg, index) => (
@@ -224,11 +317,14 @@ export const ChatView: React.FC = () => {
               >
                 {msg.content}
                 <div
-                  className={`text-[10px] mt-1.5 text-right ${
-                    msg.role === 'user' ? 'text-orange-200' : 'text-slate-400'
+                  className={`text-[10px] mt-1.5 flex items-center ${
+                    msg.role === 'user' ? 'text-orange-200 justify-end' : 'text-slate-400 justify-between'
                   }`}
                 >
-                  {msg.timestamp}
+                  {msg.role === 'assistant' && (
+                    <SpeechPlayerButton text={msg.content} />
+                  )}
+                  <span>{msg.timestamp}</span>
                 </div>
               </div>
 
@@ -377,6 +473,14 @@ export const ChatView: React.FC = () => {
           </button>
         </form>
       </div>
+
+      {/* Real-time Voice Input Visualizer Modal */}
+      <VoiceVisualizerModal
+        isOpen={isVoiceModalOpen}
+        interimTranscript={interimTranscript}
+        onClose={handleCloseVoiceModal}
+        onConfirm={handleConfirmVoiceModal}
+      />
     </div>
   );
 };

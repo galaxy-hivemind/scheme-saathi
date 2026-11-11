@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useLanguage } from '../context/LanguageContext';
 import { saveOfflineDraft } from '../utils/offlineSync';
+import { SpeechPlayerButton } from '../components/SpeechPlayerButton';
 import { Scheme, BeneficiaryProfile, EligibilityResult } from '../types';
 import {
   ArrowLeft,
@@ -204,9 +205,15 @@ export const SchemeDetailView: React.FC = () => {
           </span>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight">
-          {scheme.name}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight">
+            {scheme.name}
+          </h1>
+          <SpeechPlayerButton
+            text={`${scheme.name}. ${scheme.description}. ${scheme.benefits_summary || ''}`}
+            size="md"
+          />
+        </div>
         {scheme.short_title && (
           <p className="text-sm font-semibold text-emerald-700 mt-1">{scheme.short_title}</p>
         )}

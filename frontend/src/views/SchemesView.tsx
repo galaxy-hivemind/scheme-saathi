@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { api } from '../api/client';
 import { SchemeSummary, EligibilityResult } from '../types';
+import { SpeechPlayerButton } from '../components/SpeechPlayerButton';
+import { SpeechRecognizer, isSpeechRecognitionSupported } from '../utils/speechRecognition';
 import {
   Compass,
   Search,
+  Mic,
+  MicOff,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -39,6 +43,9 @@ export const SchemesView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(() => !localStorage.getItem('scheme_saathi_cached_schemes'));
+  const [isVoiceSearching, setIsVoiceSearching] = useState<boolean>(false);
+
+  const recognizerRef = useRef<SpeechRecognizer | null>(null);
 
   // Quick Eligibility Evaluation Modal State
   const [evaluatingScheme, setEvaluatingScheme] = useState<SchemeSummary | null>(null);
@@ -116,6 +123,39 @@ export const SchemesView: React.FC = () => {
     }
   };
 
+  const handleVoiceSearch = () => {
+    if (!isSpeechRecognitionSupported()) {
+      alert(
+        language === 'hi'
+          ? 'आपके ब्राउज़र में आवाज़ पहचान (Voice Search) समर्थित नहीं है।'
+          : 'Voice search is not supported in this browser.'
+      );
+      return;
+    }
+
+    if (isVoiceSearching) {
+      recognizerRef.current?.stop();
+      setIsVoiceSearching(false);
+      return;
+    }
+
+    const recognizer = new SpeechRecognizer(
+      {
+        onStart: () => setIsVoiceSearching(true),
+        onFinalResult: (transcript) => {
+          setSearchQuery(transcript);
+          setIsVoiceSearching(false);
+        },
+        onError: () => setIsVoiceSearching(false),
+        onEnd: () => setIsVoiceSearching(false),
+      },
+      { lang: language === 'hi' ? 'hi-IN' : 'en-IN' }
+    );
+
+    recognizerRef.current = recognizer;
+    recognizer.start();
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       {/* Page Header */}
@@ -147,8 +187,21 @@ export const SchemesView: React.FC = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('schemes.search_placeholder')}
-            className="w-full pl-11 pr-4 py-3 text-sm rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-600 bg-white shadow-sm transition-colors"
+            className="w-full pl-11 pr-12 py-3 text-sm rounded-2xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-600 bg-white shadow-sm transition-colors"
           />
+          <button
+            type="button"
+            onClick={handleVoiceSearch}
+            className={`absolute right-3 top-2.5 p-1.5 rounded-xl border transition-colors ${
+              isVoiceSearching
+                ? 'bg-rose-600 text-white border-rose-600 animate-pulse'
+                : 'text-slate-400 hover:text-orange-600 hover:bg-orange-50 border-transparent'
+            }`}
+            title={language === 'hi' ? 'बोलकर खोजें / Voice Search' : 'Voice search'}
+            aria-label="Voice search schemes"
+          >
+            {isVoiceSearching ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          </button>
         </div>
 
         {/* Category Pills */}
@@ -199,6 +252,11 @@ export const SchemesView: React.FC = () => {
                       <span>{t('schemes.verified_badge')}</span>
                     </span>
                   </div>
+
+                  <SpeechPlayerButton
+                    text={`${scheme.name}. ${scheme.benefits_summary || ''}`}
+                    size="sm"
+                  />
                 </div>
 
                 <h2 className="text-base font-bold text-slate-900 tracking-tight leading-snug mb-1">
@@ -309,14 +367,20 @@ export const SchemesView: React.FC = () => {
                     ) : (
                       <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
                     )}
-                    <div>
-                      <h4 className="font-extrabold text-sm">
-                        {evalResult.overall_status === 'PASS'
-                          ? t('eligibility.eligible')
-                          : evalResult.overall_status === 'FAIL'
-                          ? t('eligibility.ineligible')
-                          : t('eligibility.potentially_eligible')}
-                      </h4>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-extrabold text-sm">
+                          {evalResult.overall_status === 'PASS'
+                            ? t('eligibility.eligible')
+                            : evalResult.overall_status === 'FAIL'
+                            ? t('eligibility.ineligible')
+                            : t('eligibility.potentially_eligible')}
+                        </h4>
+                        <SpeechPlayerButton
+                          text={language === 'hi' ? evalResult.explanation_hi : evalResult.explanation_en}
+                          size="sm"
+                        />
+                      </div>
                       <p className="text-xs mt-0.5 opacity-90">
                         {language === 'hi' ? evalResult.explanation_hi : evalResult.explanation_en}
                       </p>
