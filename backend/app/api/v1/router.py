@@ -2,7 +2,7 @@
 Top-level API v1 router — aggregates all sub-routers.
 """
 from fastapi import APIRouter
-from app.api.v1 import health, auth, profile, beneficiaries, schemes, eligibility, chat, documents
+from app.api.v1 import health, auth, profile, beneficiaries, schemes, eligibility, chat, documents, applications
 
 api_router = APIRouter()
 
@@ -29,6 +29,9 @@ api_router.include_router(chat.router, prefix="/agent", tags=["Agent / Conversat
 
 # Documents (authenticated — secure file upload, download, checklist)
 api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
+
+# Applications (authenticated — application drafts, attached documents, portal handoff)
+api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])
 
 # Future feature routers (Phases 3-8):
 # from app.api.v1 import eligibility, documents, applications, tracking, notifications, agent
