@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useLanguage } from '../context/LanguageContext';
+import { saveOfflineDraft } from '../utils/offlineSync';
 import { Scheme, BeneficiaryProfile, EligibilityResult } from '../types';
 import {
   ArrowLeft,
@@ -53,6 +54,19 @@ export const SchemeDetailView: React.FC = () => {
       const data = await api.schemes.get(schemeId);
       setScheme(data);
     } catch (err: any) {
+      const cached = localStorage.getItem('scheme_saathi_cached_schemes');
+      if (cached) {
+        try {
+          const list = JSON.parse(cached);
+          const found = list.find((s: any) => s.id === schemeId);
+          if (found) {
+            setScheme(found);
+            return;
+          }
+        } catch {
+          // ignore cache parse error
+        }
+      }
       setError(err?.response?.data?.message || 'Failed to load scheme details');
     } finally {
       setLoading(false);
@@ -89,6 +103,20 @@ export const SchemeDetailView: React.FC = () => {
     if (!scheme) return;
     try {
       setCreatingApp(true);
+      if (!navigator.onLine) {
+        // Offline: save draft locally
+        saveOfflineDraft(scheme.id, selectedBeneficiaryId ? selectedBeneficiaryId : null);
+        setAppSuccessMessage(
+          language === 'hi'
+            ? 'ऑफ़लाइन ड्राफ्ट सहेजा गया — इंटरनेट कनेक्ट होते ही स्वचालित सिंक होगा!'
+            : 'Offline draft saved — will automatically sync when online!'
+        );
+        setTimeout(() => {
+          navigate('/applications');
+        }, 1200);
+        return;
+      }
+
       const draft = await api.applications.createDraft(
         scheme.id,
         selectedBeneficiaryId ? selectedBeneficiaryId : null
@@ -102,7 +130,19 @@ export const SchemeDetailView: React.FC = () => {
         navigate(`/applications?id=${draft.id}`);
       }, 1200);
     } catch (err: any) {
-      setEvalError(err?.response?.data?.message || 'Failed to create application draft');
+      if (!navigator.onLine || err.message === 'Network Error') {
+        saveOfflineDraft(scheme.id, selectedBeneficiaryId ? selectedBeneficiaryId : null);
+        setAppSuccessMessage(
+          language === 'hi'
+            ? 'ऑफ़लाइन ड्राफ्ट सहेजा गया — इंटरनेट कनेक्ट होते ही स्वचालित सिंक होगा!'
+            : 'Offline draft saved — will automatically sync when online!'
+        );
+        setTimeout(() => {
+          navigate('/applications');
+        }, 1200);
+      } else {
+        setEvalError(err?.response?.data?.message || 'Failed to create application draft');
+      }
     } finally {
       setCreatingApp(false);
     }

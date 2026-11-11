@@ -5,6 +5,8 @@ import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { NotificationDrawer } from './components/NotificationDrawer';
+import { OfflineBanner } from './components/OfflineBanner';
+import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 
 import { LoginView } from './views/LoginView';
 import { RegisterView } from './views/RegisterView';
@@ -22,6 +24,9 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 antialiased font-sans">
+      {/* Offline Connectivity Reactive Indicator */}
+      <OfflineBanner />
+
       {/* Top Navigation Bar */}
       <Navbar onOpenNotifications={() => setIsNotificationOpen(true)} />
 
@@ -64,6 +69,9 @@ export const App: React.FC = () => {
           onClose={() => setIsNotificationOpen(false)}
         />
       )}
+
+      {/* Mobile PWA Install Prompt Banner */}
+      <InstallPwaPrompt />
     </div>
   );
 };

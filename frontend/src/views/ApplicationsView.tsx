@@ -47,7 +47,11 @@ export const ApplicationsView: React.FC = () => {
       const res = await api.applications.list();
       setApplications(res.items);
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Failed to load applications');
+      if (!navigator.onLine) {
+        setApplications([]);
+      } else {
+        setError(err?.response?.data?.message || 'Failed to load applications');
+      }
     } finally {
       setLoading(false);
     }
