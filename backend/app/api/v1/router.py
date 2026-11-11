@@ -2,7 +2,7 @@
 Top-level API v1 router — aggregates all sub-routers.
 """
 from fastapi import APIRouter
-from app.api.v1 import health, auth, profile, beneficiaries, schemes, eligibility
+from app.api.v1 import health, auth, profile, beneficiaries, schemes, eligibility, chat
 
 api_router = APIRouter()
 
@@ -23,6 +23,9 @@ api_router.include_router(schemes.router, prefix="/schemes", tags=["Schemes"])
 
 # Eligibility Engine (authenticated)
 api_router.include_router(eligibility.router, prefix="/eligibility", tags=["Eligibility"])
+
+# Agent / Conversational Intake (authenticated)
+api_router.include_router(chat.router, prefix="/agent", tags=["Agent / Conversational Intake"])
 
 # Future feature routers (Phases 3-8):
 # from app.api.v1 import eligibility, documents, applications, tracking, notifications, agent

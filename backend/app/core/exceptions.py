@@ -48,6 +48,11 @@ class ConflictError(SchemeSaathiError):
         super().__init__(message, code="CONFLICT", status_code=409)
 
 
+class GoneError(SchemeSaathiError):
+    def __init__(self, message: str = "Resource has expired."):
+        super().__init__(message, code="GONE", status_code=410)
+
+
 class EligibilityEngineError(SchemeSaathiError):
     def __init__(self, message: str = "Eligibility evaluation failed."):
         super().__init__(message, code="ELIGIBILITY_ERROR", status_code=500)
