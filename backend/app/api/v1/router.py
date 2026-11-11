@@ -2,7 +2,19 @@
 Top-level API v1 router — aggregates all sub-routers.
 """
 from fastapi import APIRouter
-from app.api.v1 import health, auth, profile, beneficiaries, schemes, eligibility, chat, documents, applications
+from app.api.v1 import (
+    health,
+    auth,
+    profile,
+    beneficiaries,
+    schemes,
+    eligibility,
+    chat,
+    documents,
+    applications,
+    tracking,
+    notifications,
+)
 
 api_router = APIRouter()
 
@@ -33,11 +45,8 @@ api_router.include_router(documents.router, prefix="/documents", tags=["Document
 # Applications (authenticated — application drafts, attached documents, portal handoff)
 api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])
 
-# Future feature routers (Phases 3-8):
-# from app.api.v1 import eligibility, documents, applications, tracking, notifications, agent
-# api_router.include_router(eligibility.router, prefix="/eligibility", tags=["Eligibility"])
-# api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
-# api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])
-# api_router.include_router(tracking.router, prefix="/tracking", tags=["Tracking"])
-# api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
-# api_router.include_router(agent.router, prefix="/agent", tags=["Agent"])
+# Tracking (authenticated — status timeline, history audit trail, portal sync)
+api_router.include_router(tracking.router, prefix="/tracking", tags=["Application Tracking"])
+
+# Notifications (authenticated — citizen alerts, unread counter)
+api_router.include_router(notifications.router, prefix="/notifications", tags=["Citizen Notifications"])
