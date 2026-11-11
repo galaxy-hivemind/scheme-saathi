@@ -46,6 +46,7 @@ def check_eligibility(
         db=db,
         user=current_user,
         scheme_id=payload.scheme_id,
+        beneficiary_id=payload.beneficiary_id,
         profile_override=payload.profile_override,
         include_pending=include_pending,
     )
@@ -68,11 +69,13 @@ def evaluate_scheme_by_id(
     """
     RESTful path-based endpoint for evaluating a scheme.
     """
+    beneficiary_id = payload.beneficiary_id if payload else None
     profile_override = payload.profile_override if payload else None
     result = eligibility_service.evaluate_scheme_for_user(
         db=db,
         user=current_user,
         scheme_id=scheme_id,
+        beneficiary_id=beneficiary_id,
         profile_override=profile_override,
         include_pending=include_pending,
     )
@@ -94,6 +97,7 @@ def evaluate_all_schemes(
     Batch evaluate authenticated citizen against all available schemes.
     Returns counts of eligible, ineligible, and unknown schemes along with per-scheme evaluations.
     """
+    beneficiary_id = payload.beneficiary_id if payload else None
     include_pending = payload.include_pending if payload else False
     category = payload.category if payload else None
     profile_override = payload.profile_override if payload else None
@@ -112,6 +116,7 @@ def evaluate_all_schemes(
     result = eligibility_service.evaluate_all_schemes_for_user(
         db=db,
         user=current_user,
+        beneficiary_id=beneficiary_id,
         include_pending=include_pending,
         category=category,
         profile_override=profile_override,

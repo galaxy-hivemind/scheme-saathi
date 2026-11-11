@@ -44,17 +44,25 @@ class NextQuestion(BaseModel):
 class EligibilityCheckRequest(BaseModel):
     """Request payload for checking eligibility against a specific scheme."""
     scheme_id: uuid.UUID = Field(..., description="UUID of the scheme to evaluate")
+    beneficiary_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Optional UUID of the beneficiary to evaluate (defaults to account holder self profile)",
+    )
     profile_override: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Optional temporary profile attribute overrides for what-if evaluation"
+        description="Optional temporary profile attribute overrides for what-if evaluation",
     )
 
 
 class EligibilityEvaluatePathRequest(BaseModel):
     """Request payload for path-based eligibility evaluation (scheme_id supplied in path)."""
+    beneficiary_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Optional UUID of the beneficiary to evaluate (defaults to account holder self profile)",
+    )
     profile_override: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Optional temporary profile attribute overrides for what-if evaluation"
+        description="Optional temporary profile attribute overrides for what-if evaluation",
     )
 
 
@@ -65,6 +73,9 @@ class EligibilityResult(BaseModel):
     scheme_id: uuid.UUID
     scheme_code: str
     scheme_name: str
+    beneficiary_id: Optional[uuid.UUID] = Field(None, description="UUID of the beneficiary evaluated")
+    beneficiary_name: Optional[str] = Field(None, description="Full name of the beneficiary evaluated")
+    beneficiary_relationship: Optional[str] = Field(None, description="Relationship of beneficiary evaluated ('self', 'father', etc.)")
     overall_status: TriStateStatus
     result: EligibilityResultStatus
     eligible: Optional[bool] = Field(None, description="True if eligible, False if not, None if undetermined")
@@ -86,17 +97,21 @@ class EligibilityResult(BaseModel):
 
 class BatchEligibilityCheckRequest(BaseModel):
     """Request payload for batch eligibility evaluation across schemes."""
+    beneficiary_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description="Optional UUID of the beneficiary to evaluate across schemes (defaults to self profile)",
+    )
     include_pending: bool = Field(
         default=False,
-        description="Whether to include schemes with status 'pending_verification'"
+        description="Whether to include schemes with status 'pending_verification'",
     )
     category: Optional[str] = Field(
         default=None,
-        description="Optional category filter (e.g. 'agriculture', 'health')"
+        description="Optional category filter (e.g. 'agriculture', 'health')",
     )
     profile_override: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Optional temporary profile attribute overrides"
+        description="Optional temporary profile attribute overrides",
     )
 
 
