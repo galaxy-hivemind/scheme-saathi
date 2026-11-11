@@ -53,6 +53,11 @@ class GoneError(SchemeSaathiError):
         super().__init__(message, code="GONE", status_code=410)
 
 
+class PayloadTooLargeError(SchemeSaathiError):
+    def __init__(self, message: str = "Payload exceeds maximum allowed size."):
+        super().__init__(message, code="PAYLOAD_TOO_LARGE", status_code=413)
+
+
 class EligibilityEngineError(SchemeSaathiError):
     def __init__(self, message: str = "Eligibility evaluation failed."):
         super().__init__(message, code="ELIGIBILITY_ERROR", status_code=500)
