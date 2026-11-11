@@ -86,7 +86,7 @@ def test_process_document_ocr_success(mock_user, mock_document):
 
     with patch("app.services.document_service.get_document_physical_path", return_value="/tmp/test.pdf"), \
          patch("app.services.ocr_service.extract_text_from_file", return_value=(sample_ocr_text, "pypdf_digital", "COMPLETED")):
-        
+
         response = ocr_service.process_document_ocr(
             db=db,
             current_user=mock_user,

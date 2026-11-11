@@ -28,30 +28,30 @@ class ExtractedDemographicFields(BaseModel):
     name: Optional[str] = Field(None, description="Candidate citizen name extracted from document")
     date_of_birth: Optional[str] = Field(None, description="ISO date YYYY-MM-DD")
     gender: Optional[str] = Field(None, description="male, female, transgender")
-    
+
     # Aadhaar specific
     masked_uid: Optional[str] = Field(None, description="Masked UID: XXXXXXXX1234")
-    
+
     # PAN specific
     pan_number: Optional[str] = Field(None, description="Permanent Account Number: 10 chars")
-    
+
     # Income certificate specific
     annual_family_income: Optional[int] = Field(None, description="Annual family income in INR")
     certificate_number: Optional[str] = Field(None, description="Official certificate or acknowledgement ID")
     issuing_authority: Optional[str] = Field(None, description="Issuing authority (e.g. Tehsildar, SDO)")
     issue_date: Optional[str] = Field(None, description="Issue date YYYY-MM-DD")
-    
+
     # Caste certificate specific
     caste_category: Optional[str] = Field(None, description="SC, ST, OBC, or General")
     sub_caste: Optional[str] = Field(None, description="Sub-caste or community name")
     state: Optional[str] = Field(None, description="Issuing state")
     district: Optional[str] = Field(None, description="Issuing district")
-    
+
     # Land records specific
     land_area_acres: Optional[float] = Field(None, description="Total landholding in acres")
     khasra_number: Optional[str] = Field(None, description="Khasra or survey plot number")
     khata_number: Optional[str] = Field(None, description="Khata or holding account number")
-    
+
     # Bank passbook specific
     ifsc_code: Optional[str] = Field(None, description="11-character RBI IFSC code")
     masked_account_number: Optional[str] = Field(None, description="Masked bank account number")
