@@ -317,6 +317,40 @@ curl -X GET "http://localhost:8000/api/v1/agent/conversations" \
   -H "Authorization: Bearer <token>"
 ```
 
+## Document Upload & Application Draft Preparation
+
+Scheme Saathi provides zero-trust document handling and application preparation with government portal handoffs:
+
+### 1. Document Upload (Magic-Byte Sniffing & 10MB limit)
+```bash
+curl -X POST "http://localhost:8000/api/v1/documents/upload" \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@aadhaar.pdf;type=application/pdf" \
+  -F "document_type=aadhaar"
+```
+
+### 2. Document Readiness Checklist
+```bash
+curl -X GET "http://localhost:8000/api/v1/documents/checklist/<scheme_uuid>" \
+  -H "Authorization: Bearer <token>"
+```
+
+### 3. Application Draft Creation (Demographics Prefilling & Portal Handoff)
+```bash
+curl -X POST "http://localhost:8000/api/v1/applications/draft" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"scheme_id": "<scheme_uuid>", "notes": "Prepared via Scheme Saathi"}'
+```
+
+### 4. Record External Portal Submission
+```bash
+curl -X POST "http://localhost:8000/api/v1/applications/<draft_uuid>/submit" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"external_reference_number": "PMKISAN/2026/123456"}'
+```
+
 ## Seeding Government Scheme Data
 
 Seed files for central welfare schemes reside in `backend/data/schemes/`.
@@ -343,8 +377,8 @@ app/
 ├── tools/                # Agent-callable tool wrappers
 ├── services/             # Business logic (auth_service, profile_service, scheme_service)
 ├── eligibility/          # Deterministic rule engine (Phase 3)
-├── models/               # SQLAlchemy ORM models (User, UserProfile, UserConsent, Scheme, SchemeRuleVersion, SchemeDocument)
-├── schemas/              # Pydantic request/response schemas (auth, profile, scheme)
+├── models/               # SQLAlchemy ORM models (User, UserProfile, UserConsent, BeneficiaryProfile, Scheme, SchemeRuleVersion, SchemeDocument, CitizenDocument, ApplicationDraft, Chat)
+├── schemas/              # Pydantic request/response schemas (auth, profile, beneficiary, scheme, document, application, chat)
 ├── scripts/              # Administrative CLI scripts (seed_schemes)
 ├── database/             # DB session, engine, dependencies, base
 └── jobs/                 # APScheduler background jobs

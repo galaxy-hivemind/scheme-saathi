@@ -847,29 +847,31 @@ Implemented in Phase 2. Provides authenticated citizen discovery and detail view
 
 ### Documents
 
+See complete specification in [Documents API Contract (v1)](api/v1/documents.md).
+
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/documents/checklist` | JWT | Generate scheme document checklist |
-| POST | `/documents/upload` | JWT | Upload a document |
-| POST | `/documents/{document_id}/extract` | JWT | Trigger OCR extraction |
-| GET | `/documents/{document_id}/guidance` | JWT | Document procurement guidance |
-| GET | `/documents` | JWT | List user's documents |
+| POST | `/documents/upload` | JWT | Upload document file with magic byte sniffing, MIME validation, 10MB limit |
+| GET | `/documents` | JWT | List citizen documents with optional `beneficiary_id` and `document_type` filters |
+| GET | `/documents/checklist/{scheme_id}` | JWT | Generate readiness checklist with direct & alternative matching |
+| GET | `/documents/{document_id}` | JWT | Retrieve document metadata with strict IDOR protection |
+| GET | `/documents/{document_id}/download` | JWT | Secure streaming file download with tenant verification |
+| DELETE | `/documents/{document_id}` | JWT | Delete document record and purge physical file |
 
 ---
 
 ### Applications
 
+See complete specification in [Applications API Contract (v1)](api/v1/applications.md).
+
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/applications/draft` | JWT | Create application draft |
-| GET | `/applications` | JWT | List user's applications |
-| GET | `/applications/{id}` | JWT | Application details |
-| PUT | `/applications/{id}` | JWT | Update draft fields |
-| POST | `/applications/{id}/validate` | JWT | Validate draft |
-| POST | `/applications/{id}/confirm` | JWT | Record explicit user confirmation |
-| POST | `/applications/{id}/submit` | JWT | Submit or initiate portal handoff |
-| GET | `/applications/{id}/status` | JWT | Current status |
-| GET | `/applications/{id}/timeline` | JWT | Full status history |
+| POST | `/applications/draft` | JWT | Create application draft packaging prefilled demographics & attached docs |
+| GET | `/applications` | JWT | List citizen application drafts with optional `status` & `scheme_id` filters |
+| GET | `/applications/{id}` | JWT | Retrieve application draft details and official portal handoff instructions |
+| PUT | `/applications/{id}` | JWT | Update notes or demographic fields in unsubmitted draft |
+| POST | `/applications/{id}/submit` | JWT | Record external portal submission with government acknowledgement reference # |
+| DELETE | `/applications/{id}` | JWT | Delete application draft |
 
 ---
 

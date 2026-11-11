@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     ]
 
     # ── File storage ──────────────────────────────────────────────────────────
+    STORAGE_DIR: str = "uploads"
     STORAGE_BUCKET: str = "user-documents"
     MAX_UPLOAD_SIZE_MB: int = 10
     ALLOWED_FILE_TYPES: List[str] = ["pdf", "jpg", "jpeg", "png"]

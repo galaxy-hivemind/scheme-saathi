@@ -102,6 +102,65 @@ class EvaluateAllSchemesInput(BaseModel):
             raise ValueError(f"Invalid UUID string for beneficiary_id: {v}")
 
 
+class GetDocumentChecklistInput(BaseModel):
+    scheme_id: Union[uuid.UUID, str] = Field(..., description="UUID of the scheme to get document checklist for")
+    beneficiary_id: Optional[Union[uuid.UUID, str]] = Field(
+        None, description="Optional UUID of target family beneficiary (null means account holder self)"
+    )
+
+    @field_validator("scheme_id")
+    @classmethod
+    def validate_scheme_uuid(cls, v: Union[uuid.UUID, str]) -> uuid.UUID:
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except ValueError:
+            raise ValueError(f"Invalid UUID string for scheme_id: {v}")
+
+    @field_validator("beneficiary_id")
+    @classmethod
+    def validate_beneficiary_uuid(cls, v: Optional[Union[uuid.UUID, str]]) -> Optional[uuid.UUID]:
+        if v is None:
+            return None
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except ValueError:
+            raise ValueError(f"Invalid UUID string for beneficiary_id: {v}")
+
+
+class GenerateApplicationDraftInput(BaseModel):
+    scheme_id: Union[uuid.UUID, str] = Field(..., description="UUID of the scheme to prepare application draft for")
+    beneficiary_id: Optional[Union[uuid.UUID, str]] = Field(
+        None, description="Optional UUID of target family beneficiary (null means account holder self)"
+    )
+    notes: Optional[str] = Field(None, max_length=2000, description="Optional application preparation notes")
+
+    @field_validator("scheme_id")
+    @classmethod
+    def validate_scheme_uuid(cls, v: Union[uuid.UUID, str]) -> uuid.UUID:
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except ValueError:
+            raise ValueError(f"Invalid UUID string for scheme_id: {v}")
+
+    @field_validator("beneficiary_id")
+    @classmethod
+    def validate_beneficiary_uuid(cls, v: Optional[Union[uuid.UUID, str]]) -> Optional[uuid.UUID]:
+        if v is None:
+            return None
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except ValueError:
+            raise ValueError(f"Invalid UUID string for beneficiary_id: {v}")
+
+
 class ProposeCreateBeneficiaryInput(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=255, description="Full name of beneficiary")
     relationship: str = Field(

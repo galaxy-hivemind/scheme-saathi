@@ -9,6 +9,8 @@ from app.models.scheme import Scheme
 from app.models.scheme_rule_version import SchemeRuleVersion
 from app.models.scheme_document import SchemeDocument
 from app.models.chat import ChatConversation, ChatMessage, PendingAction
+from app.models.citizen_document import CitizenDocument
+from app.models.application_draft import ApplicationDraft
 
 __all__ = [
     "User",
@@ -21,4 +23,6 @@ __all__ = [
     "ChatConversation",
     "ChatMessage",
     "PendingAction",
+    "CitizenDocument",
+    "ApplicationDraft",
 ]
