@@ -29,6 +29,8 @@ build/
 .next/
 .nuxt/
 out/
+playwright-report/
+test-results/
 
 # Editor and operating system
 .DS_Store
