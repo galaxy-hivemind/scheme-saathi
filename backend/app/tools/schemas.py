@@ -161,6 +161,42 @@ class GenerateApplicationDraftInput(BaseModel):
             raise ValueError(f"Invalid UUID string for beneficiary_id: {v}")
 
 
+class TrackApplicationStatusInput(BaseModel):
+    application_id: Optional[Union[uuid.UUID, str]] = Field(
+        None, description="Optional UUID of the application draft to track"
+    )
+    external_reference_number: Optional[str] = Field(
+        None, max_length=100, description="Optional official government portal application reference number"
+    )
+    scheme_id: Optional[Union[uuid.UUID, str]] = Field(
+        None, description="Optional UUID of the scheme to look up the latest application for"
+    )
+
+    @field_validator("application_id")
+    @classmethod
+    def validate_app_uuid(cls, v: Optional[Union[uuid.UUID, str]]) -> Optional[uuid.UUID]:
+        if v is None:
+            return None
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except ValueError:
+            raise ValueError(f"Invalid UUID string for application_id: {v}")
+
+    @field_validator("scheme_id")
+    @classmethod
+    def validate_scheme_uuid(cls, v: Optional[Union[uuid.UUID, str]]) -> Optional[uuid.UUID]:
+        if v is None:
+            return None
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except ValueError:
+            raise ValueError(f"Invalid UUID string for scheme_id: {v}")
+
+
 class ProposeCreateBeneficiaryInput(BaseModel):
     full_name: str = Field(..., min_length=1, max_length=255, description="Full name of beneficiary")
     relationship: str = Field(
