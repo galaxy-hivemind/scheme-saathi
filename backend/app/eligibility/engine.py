@@ -129,14 +129,15 @@ def _calculate_age(dob: Optional[date]) -> Optional[int]:
 
 def extract_profile_field(
     field_name: str,
-    profile: Optional[UserProfile],
+    profile: Optional[Any],
     override_data: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Any, bool]:
     """
     Extract a profile field from direct columns, derived calculations, or profile_data JSONB.
+    Supports either UserProfile (self) or BeneficiaryProfile (family member).
     Returns (value, is_present). If is_present is False or value is None, the field is considered missing.
     """
-    # 1. Check override_data first if provided
+    # 1. Check override_data first if provided (highest precedence)
     if override_data and field_name in override_data:
         val = override_data[field_name]
         return val, val is not None
@@ -146,54 +147,71 @@ def extract_profile_field(
 
     # 2. Check derived fields
     if field_name in ("age", "applicant_age"):
-        if profile.profile_data and field_name in profile.profile_data:
-            val = profile.profile_data[field_name]
-            if val is not None:
-                return val, True
-        age = _calculate_age(profile.date_of_birth)
+        if hasattr(profile, "profile_data") and profile.profile_data:
+            if field_name in profile.profile_data and profile.profile_data[field_name] is not None:
+                return profile.profile_data[field_name], True
+            if "age" in profile.profile_data and profile.profile_data["age"] is not None:
+                return profile.profile_data["age"], True
+        dob = getattr(profile, "date_of_birth", None)
+        age = _calculate_age(dob)
         if age is not None:
             return age, True
         return None, False
 
     if field_name in ("applicant_gender", "gender"):
-        if profile.gender:
-            return profile.gender.strip().lower(), True
-        if profile.profile_data and "applicant_gender" in profile.profile_data:
-            val = profile.profile_data["applicant_gender"]
+        gender = getattr(profile, "gender", None)
+        if gender:
+            return gender.strip().lower(), True
+        if hasattr(profile, "profile_data") and profile.profile_data:
+            val = profile.profile_data.get("applicant_gender") or profile.profile_data.get("gender")
             if val:
                 return str(val).strip().lower(), True
         return None, False
 
     if field_name == "is_urban_resident":
-        if profile.residence_type:
-            rt = profile.residence_type.strip().lower()
-            if rt == "urban":
+        rt = getattr(profile, "residence_type", None)
+        if rt:
+            rt_norm = rt.strip().lower()
+            if rt_norm == "urban":
                 return True, True
-            elif rt in ("rural", "semi_urban"):
+            elif rt_norm == "rural":
                 return False, True
+            elif rt_norm == "semi_urban":
+                # B1: semi_urban does not imply non-urban; check explicit profile_data or return UNKNOWN
+                if hasattr(profile, "profile_data") and profile.profile_data and "is_urban_resident" in profile.profile_data:
+                    val = profile.profile_data["is_urban_resident"]
+                    return val, val is not None
+                return None, False
             else:
                 # Unknown residence_type must not imply anything; return UNKNOWN
                 return None, False
-        if profile.profile_data and "is_urban_resident" in profile.profile_data:
+        if hasattr(profile, "profile_data") and profile.profile_data and "is_urban_resident" in profile.profile_data:
             val = profile.profile_data["is_urban_resident"]
             return val, val is not None
         return None, False
 
     if field_name == "is_rural_resident":
-        if profile.residence_type:
-            rt = profile.residence_type.strip().lower()
-            if rt == "rural":
+        rt = getattr(profile, "residence_type", None)
+        if rt:
+            rt_norm = rt.strip().lower()
+            if rt_norm == "rural":
                 return True, True
-            elif rt in ("urban", "semi_urban"):
+            elif rt_norm == "urban":
                 return False, True
+            elif rt_norm == "semi_urban":
+                # B1: semi_urban does not imply non-rural; check explicit profile_data or return UNKNOWN
+                if hasattr(profile, "profile_data") and profile.profile_data and "is_rural_resident" in profile.profile_data:
+                    val = profile.profile_data["is_rural_resident"]
+                    return val, val is not None
+                return None, False
             else:
                 return None, False
-        if profile.profile_data and "is_rural_resident" in profile.profile_data:
+        if hasattr(profile, "profile_data") and profile.profile_data and "is_rural_resident" in profile.profile_data:
             val = profile.profile_data["is_rural_resident"]
             return val, val is not None
         return None, False
 
-    # 3. Direct UserProfile model columns
+    # 3. Direct model columns
     if hasattr(profile, field_name):
         val = getattr(profile, field_name)
         if val is not None:
@@ -202,7 +220,7 @@ def extract_profile_field(
             return val, True
 
     # 4. JSONB dynamic profile_data dictionary
-    if profile.profile_data and field_name in profile.profile_data:
+    if hasattr(profile, "profile_data") and profile.profile_data and field_name in profile.profile_data:
         val = profile.profile_data[field_name]
         if val is not None:
             if isinstance(val, str):
@@ -214,7 +232,7 @@ def extract_profile_field(
 
 def evaluate_condition_node(
     condition: Dict[str, Any],
-    profile: Optional[UserProfile],
+    profile: Optional[Any],
     override_data: Optional[Dict[str, Any]] = None,
 ) -> ConditionResult:
     """
@@ -233,27 +251,8 @@ def evaluate_condition_node(
 
     actual, is_present = extract_profile_field(field, profile, override_data)
 
-    # Special handling for operator 'exists'
-    if operator == "exists":
-        passed = evaluate_operator("exists", actual if is_present else None, expected)
-        status = TriStateStatus.PASS if passed else TriStateStatus.FAIL
-        actual_exists = (
-            actual is not None
-            and not (isinstance(actual, str) and not actual.strip())
-            if is_present
-            else False
-        )
-        return ConditionResult(
-            field=field,
-            operator=operator,
-            expected_value=expected,
-            actual_value=actual,
-            status=status,
-            passed=passed,
-            explanation=f"Requirement {'satisfied' if passed else 'not satisfied'}: {field} existence is {actual_exists} (expected {expected}).",
-        )
-
-    # If field is missing from citizen profile -> UNKNOWN
+    # 1. B3: If field is genuinely missing or null -> UNKNOWN for all operators (including exists)
+    # A genuinely missing attribute or explicitly present null must never accidentally convert into FAIL or PASS
     if not is_present or actual is None:
         return ConditionResult(
             field=field,
@@ -263,6 +262,21 @@ def evaluate_condition_node(
             status=TriStateStatus.UNKNOWN,
             passed=None,
             explanation=f"Information required: Field '{field}' is missing from your profile.",
+        )
+
+    # 2. Special handling for operator 'exists' when field is present
+    if operator == "exists":
+        passed = evaluate_operator("exists", actual, expected)
+        status = TriStateStatus.PASS if passed else TriStateStatus.FAIL
+        actual_exists = not (isinstance(actual, str) and not actual.strip())
+        return ConditionResult(
+            field=field,
+            operator=operator,
+            expected_value=expected,
+            actual_value=actual,
+            status=status,
+            passed=passed,
+            explanation=f"Requirement {'satisfied' if passed else 'not satisfied'}: {field} existence is {actual_exists} (expected {expected}).",
         )
 
     # Evaluate operator
@@ -297,7 +311,7 @@ def evaluate_condition_node(
 
 def evaluate_ast(
     node: Dict[str, Any],
-    profile: Optional[UserProfile],
+    profile: Optional[Any],
     override_data: Optional[Dict[str, Any]] = None,
 ) -> Tuple[TriStateStatus, List[ConditionResult]]:
     """
@@ -388,11 +402,12 @@ def get_next_question(field_name: str, preferred_language: str = "hi") -> NextQu
 
 def evaluate_scheme_eligibility(
     scheme: Scheme,
-    profile: Optional[UserProfile],
+    profile: Optional[Any],
     override_data: Optional[Dict[str, Any]] = None,
 ) -> EligibilityResult:
     """
     Evaluate citizen profile against a scheme's active rule version.
+    Supports either UserProfile (self) or BeneficiaryProfile (family member).
     Enforces:
       - Active rule selection respecting effective_from and effective_to.
       - Independent authority enforcement (pending schemes are never authoritative).
@@ -401,7 +416,7 @@ def evaluate_scheme_eligibility(
     """
     now = datetime.now(timezone.utc)
     today = date.today()
-    preferred_lang = profile.preferred_language if profile else "hi"
+    preferred_lang = getattr(profile, "preferred_language", None) or "en"
 
     # 1. Select the active rule version respecting effective date ranges
     active_rules = [

@@ -295,6 +295,187 @@ def test_unknown_residence_type_returns_unknown():
     assert val_r is None
 
 
+def test_stage_b1_residence_classification_matrix():
+    """
+    Stage B1: Verify residence classification matrix.
+    - urban -> urban=True, rural=False
+    - rural -> rural=True, urban=False
+    - semi_urban -> UNKNOWN for binary classification unless explicit in profile_data
+    - missing or unrecognized -> UNKNOWN
+    """
+    # 1. Urban
+    p_urban = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), residence_type="urban")
+    val_u, pres_u = extract_profile_field("is_urban_resident", p_urban)
+    assert pres_u is True and val_u is True
+    val_r, pres_r = extract_profile_field("is_rural_resident", p_urban)
+    assert pres_r is True and val_r is False
+
+    # 2. Rural
+    p_rural = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), residence_type="rural")
+    val_u, pres_u = extract_profile_field("is_urban_resident", p_rural)
+    assert pres_u is True and val_u is False
+    val_r, pres_r = extract_profile_field("is_rural_resident", p_rural)
+    assert pres_r is True and val_r is True
+
+    # 3. Semi-urban without explicit classification -> UNKNOWN (None, False)
+    p_semi = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), residence_type="semi_urban")
+    val_u, pres_u = extract_profile_field("is_urban_resident", p_semi)
+    assert pres_u is False and val_u is None
+    val_r, pres_r = extract_profile_field("is_rural_resident", p_semi)
+    assert pres_r is False and val_r is None
+
+    # 4. Semi-urban with explicit classification in profile_data
+    p_semi_explicit = UserProfile(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        residence_type="semi_urban",
+        profile_data={"is_urban_resident": True, "is_rural_resident": False},
+    )
+    val_u, pres_u = extract_profile_field("is_urban_resident", p_semi_explicit)
+    assert pres_u is True and val_u is True
+    val_r, pres_r = extract_profile_field("is_rural_resident", p_semi_explicit)
+    assert pres_r is True and val_r is False
+
+    # 5. Missing residence_type
+    p_missing = UserProfile(id=uuid.uuid4(), user_id=uuid.uuid4(), residence_type=None)
+    val_u, pres_u = extract_profile_field("is_urban_resident", p_missing)
+    assert pres_u is False and val_u is None
+    val_r, pres_r = extract_profile_field("is_rural_resident", p_missing)
+    assert pres_r is False and val_r is None
+
+
+def test_stage_b2_applicant_age_and_gender_extraction():
+    """
+    Stage B2: Verify age and gender extraction semantics.
+    - Derived from selected beneficiary's DOB and gender.
+    - Missing beneficiary attributes return UNKNOWN (None, False).
+    - Overrides take highest precedence.
+    - Zero fallback: account-holder profile is never used to fill beneficiary fields.
+    """
+    # Beneficiary profile mock
+    class MockBeneficiary:
+        def __init__(self, full_name, dob, gender, profile_data=None):
+            self.full_name = full_name
+            self.date_of_birth = dob
+            self.gender = gender
+            self.profile_data = profile_data or {}
+
+    # Complete beneficiary
+    b_father = MockBeneficiary(
+        full_name="Dashrath Sharma",
+        dob=date(1960, 4, 10),
+        gender="Male",
+        profile_data={},
+    )
+    val_age, pres_age = extract_profile_field("age", b_father)
+    assert pres_age is True
+    assert val_age == _calculate_age(date(1960, 4, 10))
+
+    val_gen, pres_gen = extract_profile_field("applicant_gender", b_father)
+    assert pres_gen is True
+    assert val_gen == "male"
+
+    # Beneficiary with missing DOB and gender
+    b_incomplete = MockBeneficiary(full_name="Child", dob=None, gender=None)
+    val_age, pres_age = extract_profile_field("age", b_incomplete)
+    assert pres_age is False and val_age is None
+    val_gen, pres_gen = extract_profile_field("applicant_gender", b_incomplete)
+    assert pres_gen is False and val_gen is None
+
+    # Profile override takes highest precedence
+    val_age, pres_age = extract_profile_field(
+        "age",
+        b_father,
+        override_data={"age": 75},
+    )
+    assert pres_age is True and val_age == 75
+
+    val_gen, pres_gen = extract_profile_field(
+        "applicant_gender",
+        b_father,
+        override_data={"applicant_gender": "female"},
+    )
+    assert pres_gen is True and val_gen == "female"
+
+
+def test_stage_b3_exists_operator_semantics():
+    """
+    Stage B3: Enforce strict exists operator semantics:
+    - Genuinely missing attribute -> UNKNOWN (never definitive FAIL or PASS).
+    - Explicitly present null -> UNKNOWN.
+    - Empty string & whitespace-only string -> nonexistent (FAIL on expected=True, PASS on expected=False).
+    - Non-empty string -> existent.
+    - Boolean False and numeric 0 -> existent (not treated as missing).
+    """
+    class MockProfile:
+        def __init__(self, data):
+            self.profile_data = data
+
+    cond_require_cert = {"field": "vending_cert", "operator": "exists", "value": True}
+    cond_forbid_cert = {"field": "vending_cert", "operator": "exists", "value": False}
+
+    # 1. Genuinely missing attribute -> UNKNOWN
+    p_missing = MockProfile(data={})
+    res_miss = evaluate_condition_node(cond_require_cert, p_missing)
+    assert res_miss.status == TriStateStatus.UNKNOWN
+    assert res_miss.passed is None
+    assert "missing from your profile" in res_miss.explanation
+
+    res_miss_forbid = evaluate_condition_node(cond_forbid_cert, p_missing)
+    assert res_miss_forbid.status == TriStateStatus.UNKNOWN
+    assert res_miss_forbid.passed is None
+
+    # 2. Explicitly present null -> UNKNOWN
+    p_null = MockProfile(data={"vending_cert": None})
+    res_null = evaluate_condition_node(cond_require_cert, p_null)
+    assert res_null.status == TriStateStatus.UNKNOWN
+    assert res_null.passed is None
+
+    # 3. Empty string -> nonexistent
+    p_empty = MockProfile(data={"vending_cert": ""})
+    res_empty_true = evaluate_condition_node(cond_require_cert, p_empty)
+    assert res_empty_true.status == TriStateStatus.FAIL
+    assert res_empty_true.passed is False
+
+    res_empty_false = evaluate_condition_node(cond_forbid_cert, p_empty)
+    assert res_empty_false.status == TriStateStatus.PASS
+    assert res_empty_false.passed is True
+
+    # 4. Whitespace-only string -> nonexistent
+    p_ws = MockProfile(data={"vending_cert": "   \t\n  "})
+    res_ws_true = evaluate_condition_node(cond_require_cert, p_ws)
+    assert res_ws_true.status == TriStateStatus.FAIL
+    assert res_ws_true.passed is False
+
+    res_ws_false = evaluate_condition_node(cond_forbid_cert, p_ws)
+    assert res_ws_false.status == TriStateStatus.PASS
+    assert res_ws_false.passed is True
+
+    # 5. Non-empty string -> existent
+    p_valid = MockProfile(data={"vending_cert": "VC-2026-DELHI"})
+    res_valid_true = evaluate_condition_node(cond_require_cert, p_valid)
+    assert res_valid_true.status == TriStateStatus.PASS
+    assert res_valid_true.passed is True
+
+    res_valid_false = evaluate_condition_node(cond_forbid_cert, p_valid)
+    assert res_valid_false.status == TriStateStatus.FAIL
+    assert res_valid_false.passed is False
+
+    # 6. Boolean False -> existent (not missing!)
+    cond_pucca = {"field": "owns_pucca_house", "operator": "exists", "value": True}
+    p_bool_false = MockProfile(data={"owns_pucca_house": False})
+    res_bf = evaluate_condition_node(cond_pucca, p_bool_false)
+    assert res_bf.status == TriStateStatus.PASS
+    assert res_bf.passed is True
+
+    # 7. Numeric 0 -> existent (not missing!)
+    cond_land = {"field": "landholding_acres", "operator": "exists", "value": True}
+    p_num_zero = MockProfile(data={"landholding_acres": 0})
+    res_nz = evaluate_condition_node(cond_land, p_num_zero)
+    assert res_nz.status == TriStateStatus.PASS
+    assert res_nz.passed is True
+
+
 # ── Condition & AST Evaluation Tests ─────────────────────────────────────────
 
 def test_condition_evaluation_tri_state():
