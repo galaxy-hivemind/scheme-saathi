@@ -260,3 +260,17 @@ export interface NotificationListResponse {
   total: number;
   unread_count: number;
 }
+
+export interface OCRExtractionResponse {
+  document_id: string;
+  document_type: string;
+  ocr_status: 'COMPLETED' | 'UNAVAILABLE' | 'FAILED' | 'PARTIAL' | 'PENDING';
+  extraction_engine: string;
+  raw_text_snippet: string;
+  extracted_fields: Record<string, any>;
+  confidence_score: number;
+  pii_masked: boolean;
+  pending_action_id?: string | null;
+  disclaimer: string;
+  extracted_at: string;
+}

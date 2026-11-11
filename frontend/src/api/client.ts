@@ -14,6 +14,7 @@ import {
   ApplicationDraft,
   ApplicationTimelineResponse,
   NotificationListResponse,
+  OCRExtractionResponse,
 } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
@@ -194,6 +195,16 @@ export const api = {
     delete: async (id: string) => {
       const res = await apiClient.delete(`/documents/${id}`);
       return res.data;
+    },
+    extractOcr: async (id: string, stagePendingAction: boolean = true): Promise<OCRExtractionResponse> => {
+      const res = await apiClient.post(`/documents/${id}/ocr`, {
+        stage_pending_action: stagePendingAction,
+      });
+      return res.data?.data;
+    },
+    getOcrMetadata: async (id: string): Promise<OCRExtractionResponse> => {
+      const res = await apiClient.get(`/documents/${id}/ocr`);
+      return res.data?.data;
     },
   },
 
