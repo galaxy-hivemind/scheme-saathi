@@ -53,6 +53,8 @@ def test_tool_allowlist_structure():
         "get_beneficiary",
         "evaluate_eligibility",
         "evaluate_all_schemes",
+        "get_document_checklist",
+        "generate_application_draft",
         "propose_create_beneficiary",
         "propose_update_beneficiary",
         "propose_update_user_profile",
@@ -247,6 +249,67 @@ def test_propose_update_user_profile_tool(mock_db, mock_user):
     assert added_obj.action_type == "update_user_profile"
     assert added_obj.payload["full_name"] == "Rajesh Kumar Sharma"
     assert added_obj.beneficiary_id is None
+
+
+@patch("app.services.document_service.get_checklist")
+def test_get_document_checklist_tool(mock_get_checklist, mock_db, mock_user):
+    """get_document_checklist invokes document service and returns structured checklist."""
+    scheme_id = uuid.uuid4()
+    mock_checklist = MagicMock()
+    mock_checklist.model_dump.return_value = {
+        "scheme_id": str(scheme_id),
+        "scheme_code": "PM-KISAN",
+        "scheme_name": "PM Kisan Samman Nidhi",
+        "is_complete": False,
+        "completion_percentage": 50.0,
+        "mandatory_documents": [],
+        "optional_documents": [],
+    }
+    mock_get_checklist.return_value = mock_checklist
+
+    conv_id = uuid.uuid4()
+    args = {"scheme_id": str(scheme_id)}
+    result = execute_tool(mock_db, mock_user, conv_id, "get_document_checklist", args)
+
+    assert result.success is True
+    assert result.data["scheme_code"] == "PM-KISAN"
+    assert result.data["completion_percentage"] == 50.0
+    mock_get_checklist.assert_called_once_with(
+        db=mock_db,
+        current_user=mock_user,
+        scheme_id=scheme_id,
+        beneficiary_id=None,
+    )
+
+
+@patch("app.services.application_service.create_application_draft")
+def test_generate_application_draft_tool(mock_create_draft, mock_db, mock_user):
+    """generate_application_draft invokes application draft builder."""
+    scheme_id = uuid.uuid4()
+    draft_id = uuid.uuid4()
+    mock_draft = MagicMock()
+    mock_draft.model_dump.return_value = {
+        "id": str(draft_id),
+        "scheme_id": str(scheme_id),
+        "status": "READY",
+        "official_portal_url": "https://pmkisan.gov.in",
+    }
+    mock_create_draft.return_value = mock_draft
+
+    conv_id = uuid.uuid4()
+    args = {"scheme_id": str(scheme_id), "notes": "Prepared via chat"}
+    result = execute_tool(mock_db, mock_user, conv_id, "generate_application_draft", args)
+
+    assert result.success is True
+    assert result.data["status"] == "READY"
+    assert result.data["official_portal_url"] == "https://pmkisan.gov.in"
+    mock_create_draft.assert_called_once_with(
+        db=mock_db,
+        current_user=mock_user,
+        scheme_id=scheme_id,
+        beneficiary_id=None,
+        notes="Prepared via chat",
+    )
 
 
 def test_gemini_tools_declarations_validity():

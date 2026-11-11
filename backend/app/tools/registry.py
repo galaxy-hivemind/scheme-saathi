@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.chat import ChatConversation, PendingAction
 from app.schemas.beneficiary import BeneficiaryCreate, BeneficiaryUpdate
 from app.schemas.profile import UserProfileUpdate
-from app.services import scheme_service, beneficiary_service, eligibility_service
+from app.services import scheme_service, beneficiary_service, eligibility_service, document_service, application_service
 from app.tools.schemas import (
     SearchSchemesInput,
     GetSchemeDetailsInput,
@@ -21,6 +21,8 @@ from app.tools.schemas import (
     GetBeneficiaryInput,
     EvaluateEligibilityInput,
     EvaluateAllSchemesInput,
+    GetDocumentChecklistInput,
+    GenerateApplicationDraftInput,
     ProposeCreateBeneficiaryInput,
     ProposeUpdateBeneficiaryInput,
     ProposeUpdateUserProfileInput,
@@ -37,6 +39,11 @@ READ_ONLY_TOOLS = {
     "get_beneficiary",
     "evaluate_eligibility",
     "evaluate_all_schemes",
+    "get_document_checklist",
+}
+
+APPLICATION_TOOLS = {
+    "generate_application_draft",
 }
 
 PROPOSAL_TOOLS = {
@@ -45,7 +52,7 @@ PROPOSAL_TOOLS = {
     "propose_update_user_profile",
 }
 
-ALLOWLISTED_TOOLS = READ_ONLY_TOOLS | PROPOSAL_TOOLS
+ALLOWLISTED_TOOLS = READ_ONLY_TOOLS | APPLICATION_TOOLS | PROPOSAL_TOOLS
 
 PROHIBITED_CONFIRMATION_TOOLS = {
     "confirm_beneficiary_creation",
@@ -53,6 +60,8 @@ PROHIBITED_CONFIRMATION_TOOLS = {
     "confirm_action",
     "execute_write",
     "execute_sql",
+    "submit_application",
+    "submit_external_application",
 }
 
 
@@ -182,6 +191,39 @@ def evaluate_all_schemes_tool(db: Session, current_user: User, args: Dict[str, A
         return ToolResult(success=True, data=result.model_dump(mode="json"))
     except Exception as e:
         logger.warning(f"Error executing evaluate_all_schemes: {e}")
+        return ToolResult(success=False, error=str(e))
+
+
+def get_document_checklist_tool(db: Session, current_user: User, args: Dict[str, Any]) -> ToolResult:
+    """Retrieve document checklist for a scheme and applicant (self or beneficiary)."""
+    try:
+        params = GetDocumentChecklistInput(**args)
+        checklist = document_service.get_checklist(
+            db=db,
+            current_user=current_user,
+            scheme_id=params.scheme_id,
+            beneficiary_id=params.beneficiary_id,
+        )
+        return ToolResult(success=True, data=checklist.model_dump(mode="json"))
+    except Exception as e:
+        logger.warning(f"Error executing get_document_checklist: {e}")
+        return ToolResult(success=False, error=str(e))
+
+
+def generate_application_draft_tool(db: Session, current_user: User, args: Dict[str, Any]) -> ToolResult:
+    """Prepare and persist an application draft package with prefilled demographics and attached documents."""
+    try:
+        params = GenerateApplicationDraftInput(**args)
+        draft = application_service.create_application_draft(
+            db=db,
+            current_user=current_user,
+            scheme_id=params.scheme_id,
+            beneficiary_id=params.beneficiary_id,
+            notes=params.notes,
+        )
+        return ToolResult(success=True, data=draft.model_dump(mode="json"))
+    except Exception as e:
+        logger.warning(f"Error executing generate_application_draft: {e}")
         return ToolResult(success=False, error=str(e))
 
 
@@ -396,6 +438,10 @@ def execute_tool(
         return evaluate_eligibility_tool(db, current_user, arguments)
     elif tool_name == "evaluate_all_schemes":
         return evaluate_all_schemes_tool(db, current_user, arguments)
+    elif tool_name == "get_document_checklist":
+        return get_document_checklist_tool(db, current_user, arguments)
+    elif tool_name == "generate_application_draft":
+        return generate_application_draft_tool(db, current_user, arguments)
     elif tool_name == "propose_create_beneficiary":
         return propose_create_beneficiary_tool(db, current_user, conversation_id, arguments)
     elif tool_name == "propose_update_beneficiary":
@@ -506,6 +552,53 @@ def get_gemini_tools_declarations() -> List[Dict[str, Any]]:
                         "description": "Optional welfare category filter",
                     },
                 },
+            },
+        },
+        {
+            "name": "get_document_checklist",
+            "description": (
+                "Retrieve the document readiness checklist for a specific scheme and applicant (account holder or family beneficiary). "
+                "Shows uploaded versus missing documents, accepted alternatives, and official guidance on where to obtain missing papers."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "scheme_id": {
+                        "type": "STRING",
+                        "description": "UUID of the scheme to get document requirements for",
+                    },
+                    "beneficiary_id": {
+                        "type": "STRING",
+                        "description": "Optional UUID of family beneficiary (null checks account holder self)",
+                    },
+                },
+                "required": ["scheme_id"],
+            },
+        },
+        {
+            "name": "generate_application_draft",
+            "description": (
+                "Prepare an application draft package for citizen review: prefill demographic snapshot, "
+                "link matching uploaded documents, evaluate rule snapshot, and provide the official portal handoff URL. "
+                "Does NOT submit directly to external government portals."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "scheme_id": {
+                        "type": "STRING",
+                        "description": "UUID of the scheme to prepare draft for",
+                    },
+                    "beneficiary_id": {
+                        "type": "STRING",
+                        "description": "Optional UUID of family beneficiary (null prepares for self)",
+                    },
+                    "notes": {
+                        "type": "STRING",
+                        "description": "Optional citizen application preparation notes",
+                    },
+                },
+                "required": ["scheme_id"],
             },
         },
         {
