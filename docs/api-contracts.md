@@ -882,22 +882,19 @@ Implemented in Phase 2. Provides authenticated citizen discovery and detail view
 
 ---
 
-### Agent
+### Agent / Conversational Intake
+
+Implemented in Phase 3 / Increment 2. Provides AI-assisted multi-turn intake, read-only scheme discovery & eligibility evaluation, and independent action confirmation with zero-trust database write boundaries.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/agent/chat` | JWT | Send a message; receive structured agent response |
+| POST | `/agent/chat` | JWT | Send a message; receive conversational assistant response and optional staged pending action |
+| POST | `/agent/actions/{id}/confirm` | JWT | Explicitly confirm and execute a staged pending action (row-locked, exact persisted payload) |
+| POST | `/agent/actions/{id}/cancel` | JWT | Cancel a staged pending action |
+| GET | `/agent/conversations` | JWT | List authenticated user's conversations (paginated) |
+| GET | `/agent/conversations/{id}` | JWT | Retrieve full conversation with message history |
 
-**POST /agent/chat** Request body:
-```json
-{
-  "conversation_id": "uuid-or-null",
-  "message": "मुझे खेती के लिए कोई योजना चाहिए",
-  "language": "hi"
-}
-```
-
-Response: `{ data: AgentResponse }`
+Detailed specification: see [`docs/api/v1/conversational_agent.md`](v1/conversational_agent.md).
 
 ---
 
@@ -909,7 +906,8 @@ Response: `{ data: AgentResponse }`
 | `NOT_FOUND` | Resource does not exist |
 | `UNAUTHORIZED` | Missing or invalid JWT |
 | `FORBIDDEN` | Action not permitted for this user |
-| `CONFLICT` | Duplicate resource |
+| `CONFLICT` | Duplicate resource or already executed/cancelled action |
+| `GONE` | Action has expired (15-min TTL exceeded) |
 | `ELIGIBILITY_ERROR` | Rule engine evaluation failure |
 | `INTERNAL_ERROR` | Unexpected server error |
 | `RATE_LIMITED` | Too many requests |
