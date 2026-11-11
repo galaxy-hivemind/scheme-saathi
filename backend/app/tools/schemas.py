@@ -251,6 +251,20 @@ class ProposeUpdateUserProfileInput(BaseModel):
     profile_data: Optional[Dict[str, Any]] = None
 
 
+class ExtractDocumentTextInput(BaseModel):
+    document_id: Union[uuid.UUID, str] = Field(..., description="UUID of the citizen's uploaded document to extract text and fields from")
+
+    @field_validator("document_id")
+    @classmethod
+    def validate_uuid(cls, v: Union[uuid.UUID, str]) -> uuid.UUID:
+        if isinstance(v, uuid.UUID):
+            return v
+        try:
+            return uuid.UUID(str(v).strip())
+        except ValueError:
+            raise ValueError(f"Invalid UUID string for document_id: {v}")
+
+
 class ToolResult(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     success: bool
