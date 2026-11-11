@@ -20,11 +20,25 @@ import {
 export const SchemesView: React.FC = () => {
   const { t, language } = useLanguage();
 
-  const [schemes, setSchemes] = useState<SchemeSummary[]>([]);
-  const [total, setTotal] = useState<number>(0);
+  const [schemes, setSchemes] = useState<SchemeSummary[]>(() => {
+    try {
+      const cached = localStorage.getItem('scheme_saathi_cached_schemes');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [total, setTotal] = useState<number>(() => {
+    try {
+      const cached = localStorage.getItem('scheme_saathi_cached_schemes');
+      return cached ? JSON.parse(cached).length : 0;
+    } catch {
+      return 0;
+    }
+  });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !localStorage.getItem('scheme_saathi_cached_schemes'));
 
   // Quick Eligibility Evaluation Modal State
   const [evaluatingScheme, setEvaluatingScheme] = useState<SchemeSummary | null>(null);
@@ -49,10 +63,32 @@ export const SchemesView: React.FC = () => {
         category: selectedCategory || undefined,
         limit: 20,
       });
-      setSchemes(data.items || []);
+      const items = data.items || [];
+      setSchemes(items);
       setTotal(data.total || 0);
+      if (!searchQuery && !selectedCategory && items.length > 0) {
+        localStorage.setItem('scheme_saathi_cached_schemes', JSON.stringify(items));
+      }
     } catch (err) {
-      console.error('Failed to load schemes:', err);
+      console.warn('Network fetch failed, attempting to read from offline schemes cache:', err);
+      const cached = localStorage.getItem('scheme_saathi_cached_schemes');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          let filtered = parsed;
+          if (selectedCategory) {
+            filtered = filtered.filter((s: any) => s.category?.toLowerCase() === selectedCategory.toLowerCase());
+          }
+          if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            filtered = filtered.filter((s: any) => s.name?.toLowerCase().includes(q) || s.scheme_code?.toLowerCase().includes(q));
+          }
+          setSchemes(filtered);
+          setTotal(filtered.length);
+        } catch {
+          // ignore cache parse error
+        }
+      }
     } finally {
       setIsLoading(false);
     }

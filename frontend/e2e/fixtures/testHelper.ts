@@ -89,7 +89,7 @@ export async function setupApiMocks(page: Page): Promise<void> {
   });
 
   // 4. Schemes Catalogue & Details
-  await page.route(/\/api\/v1\/schemes\?/, async (route) => {
+  await page.route(/\/api\/v1\/schemes(\?.*)?$/, async (route) => {
     const url = new URL(route.request().url());
     const category = url.searchParams.get('category');
     const q = url.searchParams.get('q')?.toLowerCase();

@@ -25,6 +25,7 @@ build/
 # Frontend
 node_modules/
 dist/
+dev-dist/
 build/
 .next/
 .nuxt/
