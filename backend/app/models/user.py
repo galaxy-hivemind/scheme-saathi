@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.user_profile import UserProfile
     from app.models.user_consent import UserConsent
     from app.models.beneficiary_profile import BeneficiaryProfile
+    from app.models.chat import ChatConversation, PendingAction
 
 
 class User(Base, TimestampMixin):
@@ -60,6 +61,16 @@ class User(Base, TimestampMixin):
     )
     beneficiaries: Mapped[List["BeneficiaryProfile"]] = relationship(
         "BeneficiaryProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    conversations: Mapped[List["ChatConversation"]] = relationship(
+        "ChatConversation",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    pending_actions: Mapped[List["PendingAction"]] = relationship(
+        "PendingAction",
         back_populates="user",
         cascade="all, delete-orphan",
     )
