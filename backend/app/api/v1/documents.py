@@ -22,7 +22,8 @@ from app.schemas.document import (
     DocumentListResponse,
     DocumentChecklistResponse,
 )
-from app.services import document_service
+from app.schemas.ocr import OCRExtractionResponse, OCRExtractRequest
+from app.services import document_service, ocr_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -172,4 +173,58 @@ def delete_document(
         success=True,
         data={"deleted": True, "document_id": str(document_id)},
         message="Document deleted successfully.",
+    )
+
+
+@router.post(
+    "/{document_id}/ocr",
+    response_model=APIResponse[OCRExtractionResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Extract text and demographic fields from document (OCR)",
+)
+def extract_document_ocr(
+    document_id: uuid.UUID,
+    payload: Optional[OCRExtractRequest] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> APIResponse[OCRExtractionResponse]:
+    """
+    Extract text and structured demographic fields from an uploaded document.
+    Enforces tenant ownership, applies PII masking (e.g. Aadhaar XXXXXXXX1234),
+    and optionally stages a durable PendingAction proposal for citizen review.
+    """
+    stage_action = payload.stage_pending_action if payload else False
+    result = ocr_service.process_document_ocr(
+        db=db,
+        current_user=current_user,
+        document_id=document_id,
+        stage_pending_action=stage_action,
+    )
+    return APIResponse(
+        success=True,
+        data=result,
+        message="Document text and demographic fields extracted successfully.",
+    )
+
+
+@router.get(
+    "/{document_id}/ocr",
+    response_model=APIResponse[OCRExtractionResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Get previously extracted OCR metadata",
+)
+def get_document_ocr_metadata(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> APIResponse[OCRExtractionResponse]:
+    """Retrieve previously persisted OCR metadata without re-running the extraction engine."""
+    result = ocr_service.get_document_ocr(
+        db=db,
+        current_user=current_user,
+        document_id=document_id,
+    )
+    return APIResponse(
+        success=True,
+        data=result,
     )
