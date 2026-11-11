@@ -7,6 +7,7 @@ import {
   DocumentChecklistResponse,
   SchemeSummary,
   BeneficiaryProfile,
+  OCRExtractionResponse,
 } from '../types';
 import {
   FileText,
@@ -17,6 +18,9 @@ import {
   Loader2,
   FileCheck,
   Shield,
+  ScanText,
+  Sparkles,
+  X,
 } from 'lucide-react';
 
 const COMMON_DOC_TYPES = [
@@ -56,6 +60,13 @@ export const DocumentsView: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+
+  // OCR Modal state
+  const [processingOcrId, setProcessingOcrId] = useState<string | null>(null);
+  const [ocrModalData, setOcrModalData] = useState<OCRExtractionResponse | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState<boolean>(false);
+  const [ocrConfirmSuccess, setOcrConfirmSuccess] = useState<string | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSchemes();
@@ -178,6 +189,37 @@ export const DocumentsView: React.FC = () => {
       }
     } catch {
       // Error handling
+    }
+  };
+
+  const handleTriggerOCR = async (docId: string) => {
+    try {
+      setProcessingOcrId(docId);
+      setOcrError(null);
+      setOcrConfirmSuccess(null);
+      const res = await api.documents.extractOcr(docId, true);
+      setOcrModalData(res);
+      await loadDocuments();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to extract text from document');
+    } finally {
+      setProcessingOcrId(null);
+    }
+  };
+
+  const handleConfirmOcrAction = async (actionId: string) => {
+    try {
+      setConfirmingAction(true);
+      await api.agent.confirmAction(actionId);
+      setOcrConfirmSuccess(
+        language === 'hi'
+          ? 'दस्तावेज़ से प्राप्त विवरण के साथ प्रोफ़ाइल सफलतापूर्वक अपडेट हो गई!'
+          : 'Profile updated with extracted details successfully!'
+      );
+    } catch (err: any) {
+      setOcrError(err?.response?.data?.message || 'Failed to apply action to profile');
+    } finally {
+      setConfirmingAction(false);
     }
   };
 
@@ -538,6 +580,18 @@ export const DocumentsView: React.FC = () => {
                     {doc.verification_status}
                   </span>
                   <button
+                    onClick={() => handleTriggerOCR(doc.id)}
+                    disabled={processingOcrId === doc.id}
+                    className="p-1.5 text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition border border-emerald-200"
+                    title={language === 'hi' ? 'दस्तावेज़ से विवरण निकालें (OCR)' : 'Extract Details (OCR)'}
+                  >
+                    {processingOcrId === doc.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                    ) : (
+                      <ScanText className="w-4 h-4" />
+                    )}
+                  </button>
+                  <button
                     onClick={() => handleDelete(doc.id)}
                     className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition"
                     title={language === 'hi' ? 'दस्तावेज़ हटाएं' : 'Delete document'}
@@ -550,6 +604,104 @@ export const DocumentsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* OCR Details & Confirmation Modal */}
+      {ocrModalData && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  {language === 'hi' ? 'दस्तावेज़ से निकाले गए विवरण (OCR)' : 'Extracted Document Details (OCR)'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setOcrModalData(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-600">
+                {language === 'hi' ? 'इंजन:' : 'Engine:'} {ocrModalData.extraction_engine}
+              </span>
+              <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                {Math.round(ocrModalData.confidence_score * 100)}% Confidence
+              </span>
+            </div>
+
+            {/* Extracted Fields Table */}
+            {Object.keys(ocrModalData.extracted_fields).length > 0 ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
+                {Object.entries(ocrModalData.extracted_fields).map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between py-1 border-b border-slate-100 last:border-b-0">
+                    <span className="font-semibold text-slate-700 capitalize">
+                      {k.replace(/_/g, ' ')}:
+                    </span>
+                    <span className="font-mono text-slate-900 font-bold">
+                      {typeof v === 'number' && k.includes('income') ? `₹${v.toLocaleString()}` : String(v)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs">
+                {language === 'hi'
+                  ? 'दस्तावेज़ से कोई विशिष्ट जनसांख्यिकीय फ़ील्ड नहीं मिला।'
+                  : 'No structured demographic fields could be detected from this document.'}
+              </div>
+            )}
+
+            {/* Disclaimer */}
+            <p className="text-[11px] text-slate-500 italic">
+              {ocrModalData.disclaimer}
+            </p>
+
+            {ocrError && (
+              <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs flex items-center">
+                <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span>{ocrError}</span>
+              </div>
+            )}
+
+            {ocrConfirmSuccess && (
+              <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs flex items-center">
+                <CheckCircle2 className="w-4 h-4 mr-2 flex-shrink-0" />
+                <span>{ocrConfirmSuccess}</span>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setOcrModalData(null)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-50 transition"
+              >
+                {language === 'hi' ? 'बंद करें' : 'Close'}
+              </button>
+              {ocrModalData.pending_action_id && !ocrConfirmSuccess && (
+                <button
+                  type="button"
+                  onClick={() => handleConfirmOcrAction(ocrModalData.pending_action_id!)}
+                  disabled={confirmingAction}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50 flex items-center shadow-sm"
+                >
+                  {confirmingAction ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {language === 'hi' ? 'प्रोफ़ाइल में लागू करें (पुष्टि करें)' : 'Apply to Profile (Confirm)'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

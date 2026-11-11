@@ -13,7 +13,15 @@ from app.models.user import User
 from app.models.chat import ChatConversation, PendingAction
 from app.schemas.beneficiary import BeneficiaryCreate, BeneficiaryUpdate
 from app.schemas.profile import UserProfileUpdate
-from app.services import scheme_service, beneficiary_service, eligibility_service, document_service, application_service, tracking_service
+from app.services import (
+    scheme_service,
+    beneficiary_service,
+    eligibility_service,
+    document_service,
+    application_service,
+    tracking_service,
+    ocr_service,
+)
 from app.tools.schemas import (
     SearchSchemesInput,
     GetSchemeDetailsInput,
@@ -24,6 +32,7 @@ from app.tools.schemas import (
     GetDocumentChecklistInput,
     GenerateApplicationDraftInput,
     TrackApplicationStatusInput,
+    ExtractDocumentTextInput,
     ProposeCreateBeneficiaryInput,
     ProposeUpdateBeneficiaryInput,
     ProposeUpdateUserProfileInput,
@@ -42,6 +51,7 @@ READ_ONLY_TOOLS = {
     "evaluate_all_schemes",
     "get_document_checklist",
     "track_application_status",
+    "extract_document_text",
 }
 
 APPLICATION_TOOLS = {
@@ -243,6 +253,22 @@ def track_application_status_tool(db: Session, current_user: User, args: Dict[st
         return ToolResult(success=True, data=summary)
     except Exception as e:
         logger.warning(f"Error executing track_application_status: {e}")
+        return ToolResult(success=False, error=str(e))
+
+
+def extract_document_text_tool(db: Session, current_user: User, args: Dict[str, Any]) -> ToolResult:
+    """Extract text and structured demographic fields from an uploaded citizen document (OCR)."""
+    try:
+        params = ExtractDocumentTextInput(**args)
+        result = ocr_service.process_document_ocr(
+            db=db,
+            current_user=current_user,
+            document_id=params.document_id,
+            stage_pending_action=False,
+        )
+        return ToolResult(success=True, data=result.model_dump(mode="json"))
+    except Exception as e:
+        logger.warning(f"Error executing extract_document_text: {e}")
         return ToolResult(success=False, error=str(e))
 
 
@@ -463,6 +489,8 @@ def execute_tool(
         return generate_application_draft_tool(db, current_user, arguments)
     elif tool_name == "track_application_status":
         return track_application_status_tool(db, current_user, arguments)
+    elif tool_name == "extract_document_text":
+        return extract_document_text_tool(db, current_user, arguments)
     elif tool_name == "propose_create_beneficiary":
         return propose_create_beneficiary_tool(db, current_user, conversation_id, arguments)
     elif tool_name == "propose_update_beneficiary":
@@ -644,6 +672,23 @@ def get_gemini_tools_declarations() -> List[Dict[str, Any]]:
                         "description": "Optional UUID of the welfare scheme to check latest application status for",
                     },
                 },
+            },
+        },
+        {
+            "name": "extract_document_text",
+            "description": (
+                "Extract machine-readable text and demographic fields from an uploaded citizen document (Aadhaar, PAN, Income/Caste Certificate, Land Record, Bank Passbook) via OCR. "
+                "Enforces PII masking and statutory accessibility disclaimers."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "document_id": {
+                        "type": "STRING",
+                        "description": "UUID of the citizen's uploaded document to extract details from",
+                    },
+                },
+                "required": ["document_id"],
             },
         },
         {
