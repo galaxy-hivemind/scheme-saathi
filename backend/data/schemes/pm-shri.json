@@ -1,0 +1,128 @@
+{
+  "scheme_code": "PM-SHRI",
+  "name": "PM Schools for Rising India",
+  "short_title": "PM-SHRI",
+  "description": "Centrally sponsored scheme to upgrade more than 14,500 schools into exemplar schools showcasing National Education Policy (NEP) 2020 pedagogy, modern STEM facilities, smart classrooms, and holistic student development.",
+  "ministry": "Ministry of Education",
+  "department": "Department of School Education and Literacy",
+  "category": "education",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Students enrolled in government elementary, secondary, and senior secondary schools"
+  ],
+  "benefits": "State-of-the-art smart learning environment, experiential learning pedagogical materials, ICT laboratories, vocational skill hubs, and modern sports infrastructure across upgraded schools.",
+  "official_url": "https://pmshri.education.gov.in/",
+  "application_url": "https://pmshri.education.gov.in/",
+  "source_url": "https://pmshri.education.gov.in/scheme_guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of School Education and Literacy, Ministry of Education, Government of India.",
+      "source_url": "https://pmshri.education.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-03-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PM-SHRI Scheme Framework Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored education enhancement scheme covering government schools nationwide.",
+      "source_url": "https://pmshri.education.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-03-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scope and Outlay",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "All students enrolled in designated government schools across primary, upper primary, secondary, and higher secondary grades.",
+      "source_url": "https://pmshri.education.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-03-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Target Student Population",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Provision of modern ICT smart classrooms, NEP-aligned curricula, green school facilities, and vocational training.",
+      "source_url": "https://pmshri.education.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-03-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Core Interventions and Benefits",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official scheme portal and school selection portal at pmshri.education.gov.in.",
+      "source_url": "https://pmshri.education.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PM-SHRI Official Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Over 10,000 schools actively selected and funded across States and Union Territories.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2037142",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-07-25",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2037142",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Beneficiary must be an actively enrolled student in a government school selected under PM-SHRI.",
+    "all": [
+      {
+        "field": "is_student",
+        "operator": "equals",
+        "value": true
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card / APAAR ID",
+      "description": "Student Aadhaar or APAAR (Automated Permanent Academic Account Registry) ID.",
+      "is_mandatory": true,
+      "alternatives": [
+        "Student ID Card"
+      ],
+      "issuing_authority": "UIDAI / Ministry of Education",
+      "source_url": "https://pmshri.education.gov.in/scheme_guidelines.pdf"
+    },
+    {
+      "document_type": "bonafide_certificate",
+      "title": "School Enrolment / Bonafide Certificate",
+      "description": "Proof of active regular enrolment in the designated PM-SHRI school.",
+      "is_mandatory": true,
+      "issuing_authority": "School Headmaster / Principal",
+      "source_url": "https://pmshri.education.gov.in/scheme_guidelines.pdf"
+    }
+  ]
+}

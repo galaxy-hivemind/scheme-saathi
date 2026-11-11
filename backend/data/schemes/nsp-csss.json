@@ -1,0 +1,166 @@
+{
+  "scheme_code": "NSP-CSSS",
+  "name": "Central Sector Scheme of Scholarship for College and University Students",
+  "short_title": "CSSS",
+  "description": "Scholarship scheme funded by the Department of Higher Education providing financial assistance to meritorious students from low-income families pursuing regular degree studies.",
+  "ministry": "Ministry of Education",
+  "department": "Department of Higher Education",
+  "category": "education",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Meritorious students scoring above 80th percentile in relevant stream in Class XII board exams",
+    "Students pursuing regular undergraduate and postgraduate courses",
+    "Students with family annual income not exceeding Rs. 4.5 lakh"
+  ],
+  "benefits": "Scholarship amount of Rs. 12,000 per annum at graduation level for the first 3 years and Rs. 20,000 per annum at postgraduate level, transferred directly via DBT.",
+  "official_url": "https://scholarships.gov.in/",
+  "application_url": "https://scholarships.gov.in/",
+  "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Higher Education, Ministry of Education, Government of India.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-07-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "CSSS Guidelines Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central sector higher education scholarship scheme applicable across all recognized higher education institutions in India.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-07-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scheme Scope",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Meritorious students who have scored above the 80th percentile in the 10+2 pattern with parental income up to Rs. 4.5 lakh.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-07-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Eligibility Conditions",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 12,000 per annum for undergraduate degree and Rs. 20,000 per annum for postgraduate studies via Direct Benefit Transfer.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-07-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Rate of Scholarship",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Application submission exclusively handled via National Scholarship Portal at scholarships.gov.in.",
+      "source_url": "https://scholarships.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "NSP Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Active annual cycle with biometric authentication on NSP for institutional verification.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2045520",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2045520",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Students pursuing courses via correspondence or distance education, or holding any other scholarship are not eligible.",
+    "all": [
+      {
+        "field": "is_student",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 17
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 25
+      },
+      {
+        "field": "annual_income",
+        "operator": "less_than_or_equal",
+        "value": 450000
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof for student.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf"
+    },
+    {
+      "document_type": "marksheet_12",
+      "title": "Class XII Marksheet",
+      "description": "Board certificate verifying student scored in top 20th percentile.",
+      "is_mandatory": true,
+      "issuing_authority": "Central / State Board of Secondary Education",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf"
+    },
+    {
+      "document_type": "income_certificate",
+      "title": "Income Certificate",
+      "description": "Competent authority income certificate proving family income under Rs. 4.5 lakh.",
+      "is_mandatory": true,
+      "issuing_authority": "Revenue Authority / Tehsildar",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf"
+    },
+    {
+      "document_type": "bonafide_certificate",
+      "title": "College Bonafide Student Certificate",
+      "description": "Verification of admission in regular graduate / postgraduate program.",
+      "is_mandatory": true,
+      "issuing_authority": "College / University Authority",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Bank Account Details",
+      "description": "Aadhaar seeded bank account in applicant's name for DBT.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/Guidelines_DOHE_CSSS.pdf"
+    }
+  ]
+}

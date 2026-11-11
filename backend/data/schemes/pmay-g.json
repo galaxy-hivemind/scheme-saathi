@@ -1,0 +1,150 @@
+{
+  "scheme_code": "PMAY-G",
+  "name": "Pradhan Mantri Awaas Yojana - Gramin",
+  "short_title": "PMAY-G",
+  "description": "Flagship rural housing scheme providing financial assistance to rural homeless households and households living in kutcha and dilapidated houses to construct pucca houses with basic amenities.",
+  "ministry": "Ministry of Rural Development",
+  "department": "Department of Rural Development",
+  "category": "housing",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Rural homeless households",
+    "Households living in zero, one or two-room kutcha houses identified by SECC 2011 and Awaas+ survey"
+  ],
+  "benefits": "Direct grant assistance of Rs. 1,20,000 in plain areas and Rs. 1,30,000 in hilly/difficult/IAP areas, plus 90/95 days of unskilled labour under MGNREGS (approx. Rs. 27,000) and Rs. 12,000 for toilet construction under Swachh Bharat Mission-Gramin.",
+  "official_url": "https://pmayg.nic.in/",
+  "application_url": "https://pmayg.nic.in/",
+  "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Rural Development, Ministry of Rural Development, Government of India.",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-01-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMAY-G Framework Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored rural housing scheme implemented across rural areas of all States and UTs.",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-01-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scope and Outlay",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Rural families living in kutcha houses or without shelter as identified by SECC 2011 deprivation criteria and Gram Sabha verified Awaas+ list.",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-01-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Beneficiary Identification",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 1.20 lakh in plain areas and Rs. 1.30 lakh in difficult areas disbursed directly in installments tied to construction milestones, coupled with MGNREGA wages.",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-01-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Unit Assistance and Convergence",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official AwaasSoft management portal hosted at pmayg.nic.in.",
+      "source_url": "https://pmayg.nic.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMAYG AwaasSoft Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Cabinet approved extension through March 2029 with a target to construct 2 crore additional rural houses under PMAY-G 2.0.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2043818",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-09",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2043818",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Beneficiary must not own a pucca house anywhere in India and must not have any member in regular government service.",
+    "all": [
+      {
+        "field": "is_rural",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "has_pucca_house",
+        "operator": "equals",
+        "value": false
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar of head of household and family members.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf"
+    },
+    {
+      "document_type": "job_card",
+      "title": "MGNREGA Job Card",
+      "description": "Valid Job Card for linking labour assistance wages.",
+      "is_mandatory": true,
+      "issuing_authority": "Gram Panchayat",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Bank Passbook",
+      "description": "Aadhaar-seeded bank account details for direct installment transfers.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank / Post Office",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf"
+    },
+    {
+      "document_type": "land_possession",
+      "title": "Homestead Land Title / Possession Document",
+      "description": "Proof of ownership or legal possession of homestead plot for house construction.",
+      "is_mandatory": true,
+      "alternatives": [
+        "Gram Panchayat Allotment Certificate"
+      ],
+      "issuing_authority": "Revenue Department / Gram Panchayat",
+      "source_url": "https://pmayg.nic.in/netiay/PMAYG_Framework_Guidelines.pdf"
+    }
+  ]
+}

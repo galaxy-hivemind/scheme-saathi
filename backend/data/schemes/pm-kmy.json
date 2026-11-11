@@ -1,0 +1,160 @@
+{
+  "scheme_code": "PM-KMY",
+  "name": "Pradhan Mantri Kisan Maan Dhan Yojana",
+  "short_title": "PM-KMY",
+  "description": "A Central Sector pension scheme for small and marginal farmers (SMFs) providing an assured monthly pension of Rs. 3,000 on reaching 60 years of age.",
+  "ministry": "Ministry of Agriculture and Farmers Welfare",
+  "department": "Department of Agriculture and Farmers Welfare",
+  "category": "agriculture",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Small and marginal farmers owning up to 2 hectares of cultivable land",
+    "Farmers aged between 18 and 40 years"
+  ],
+  "benefits": "Assured minimum monthly pension of Rs. 3,000 to eligible small and marginal farmers upon reaching 60 years of age, with 50% family pension payable to spouse upon subscriber death.",
+  "official_url": "https://pmkmy.gov.in/",
+  "application_url": "https://pmkmy.gov.in/",
+  "source_url": "https://pmkmy.gov.in/files/guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Agriculture and Farmers Welfare, Ministry of Agriculture and Farmers Welfare.",
+      "source_url": "https://pmkmy.gov.in/files/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2024-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 1.1, Administrative Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central sector old age pension scheme applicable to small and marginal farmers across all States and UTs.",
+      "source_url": "https://pmkmy.gov.in/files/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2024-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 1.2, Geographical Applicability",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Small and marginal farmers who possess cultivable land up to 2 hectares in the land records of the concerned State/UT, aged between 18 and 40 years.",
+      "source_url": "https://pmkmy.gov.in/files/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2024-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 2.1, Target Beneficiary Criteria",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Assured monthly pension of Rs. 3,000 on attaining age 60, with equal matching contribution by Central Government during accumulation phase.",
+      "source_url": "https://pmkmy.gov.in/files/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2024-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 3.1, Benefit Provisions",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official scheme portal and registration access hosted at pmkmy.gov.in.",
+      "source_url": "https://pmkmy.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PM-KMY Web Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Active nationwide rollout executed through LIC as pension fund manager and CSC network for citizen enrollment.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2050110",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-09-02",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2050110",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Farmers covered under other social security schemes (NPS, ESIC, EPFO) or institutional landholders are excluded.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 40
+      },
+      {
+        "field": "is_landholding_farmer",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "land_size_hectares",
+        "operator": "less_than_or_equal",
+        "value": 2.0
+      },
+      {
+        "field": "is_income_tax_payer",
+        "operator": "equals",
+        "value": false
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar card for beneficiary identification and e-KYC.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "guidance": "Aadhaar number linked to active mobile phone number.",
+      "source_url": "https://pmkmy.gov.in/files/guidelines.pdf"
+    },
+    {
+      "document_type": "land_records",
+      "title": "Land Ownership Record (Khatauni/Khasra/Patta)",
+      "description": "Certified land record showing cultivable land up to 2 hectares in applicant's name.",
+      "is_mandatory": true,
+      "alternatives": [
+        "Record of Rights (RoR)"
+      ],
+      "issuing_authority": "State Revenue Department",
+      "guidance": "Verify land extract via state Bhulekh portal or Tehsildar.",
+      "source_url": "https://pmkmy.gov.in/files/guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Savings Bank Account Passbook",
+      "description": "Bank passbook or cancelled cheque with IFSC and account number.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank / Post Office",
+      "guidance": "Account must have auto-debit facility enabled for monthly contribution.",
+      "source_url": "https://pmkmy.gov.in/files/guidelines.pdf"
+    }
+  ]
+}

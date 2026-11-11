@@ -112,7 +112,8 @@
         "operator": "equals",
         "value": false
       }
-    ]
+    ],
+    "criteria_complete": false
   },
   "required_documents": [
     {
@@ -130,11 +131,12 @@
       "title": "Savings Bank Account Details",
       "description": "Active savings account with auto-debit facility for monthly contribution deduction.",
       "is_mandatory": true,
-      "alternatives": ["Post Office Savings Bank Account"],
+      "alternatives": [
+        "Post Office Savings Bank Account"
+      ],
       "issuing_authority": "Scheduled Bank / Department of Posts",
       "guidance": "Ensure sufficient monthly balance to prevent contribution default charges.",
       "source_url": "https://www.pfrda.org.in/myauth/admin/showimg.cshtml?ID=2621"
     }
   ]
 }
-

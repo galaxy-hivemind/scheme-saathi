@@ -1,0 +1,130 @@
+{
+  "scheme_code": "PMJJBY",
+  "name": "Pradhan Mantri Jeevan Jyoti Bima Yojana",
+  "short_title": "PMJJBY",
+  "description": "One-year renewable life insurance scheme offering financial protection against death due to any cause, designed for bank or post office savings account holders.",
+  "ministry": "Ministry of Finance",
+  "department": "Department of Financial Services",
+  "category": "social_security",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Individuals aged between 18 and 50 years holding a bank or post office savings account"
+  ],
+  "benefits": "Life insurance cover of Rs. 2,00,000 payable to nominee in case of death of the insured person due to any reason, at an annual premium of Rs. 436 auto-debited from bank account.",
+  "official_url": "https://financialservices.gov.in/",
+  "application_url": "https://financialservices.gov.in/",
+  "source_url": "https://financialservices.gov.in/sites/default/files/PMJJBY_Rules_Revised.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Financial Services, Ministry of Finance, Government of India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMJJBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMJJBY Revised Rules Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central social security life insurance scheme offered through all commercial banks, RRBs, and post offices in India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMJJBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Eligibility Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "All savings bank account holders aged between 18 and 50 years who give consent to join and enable auto-debit.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMJJBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Enrolment Modalities",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 2,00,000 lump sum payable to nominee on death due to any cause, for annual premium of Rs. 436.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMJJBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Premium and Assurance",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official scheme rules and claims portal hosted at financialservices.gov.in.",
+      "source_url": "https://financialservices.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "DFS PMJJBY Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Over 19 crore cumulative enrolments with seamless claim settlement via direct credit to nominees.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2020780",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-05-09",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2020780",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Risk cover is subject to a 30-day initial lien period from date of enrolment (except accidental death).",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 50
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMJJBY_Rules_Revised.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Savings Bank Account Passbook",
+      "description": "Active savings bank account with auto-debit consent.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank / Post Office",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMJJBY_Rules_Revised.pdf"
+    }
+  ]
+}

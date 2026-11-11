@@ -19,7 +19,7 @@ export const Header: React.FC = () => {
   const navLinks = [
     { to: '/', label: language === 'hi' ? 'होम' : 'Home' },
     { to: '/schemes', label: language === 'hi' ? 'योजनाएं' : 'Schemes' },
-    { to: '/schemes', label: language === 'hi' ? 'पात्रता' : 'Eligibility' },
+    { to: '/eligible', label: language === 'hi' ? 'पात्रता' : 'Eligibility' },
     { to: '/chat', label: language === 'hi' ? 'एआई सहायक' : 'AI Assistant' },
     { to: '/applications', label: language === 'hi' ? 'मेरे आवेदन' : 'My Applications' },
   ];

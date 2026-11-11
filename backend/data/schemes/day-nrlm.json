@@ -1,0 +1,138 @@
+{
+  "scheme_code": "DAY-NRLM",
+  "name": "Deendayal Antyodaya Yojana - National Rural Livelihoods Mission",
+  "short_title": "DAY-NRLM",
+  "description": "National rural poverty alleviation programme promoting sustainable self-employment by organizing rural women into Self Help Groups (SHGs) and federations.",
+  "ministry": "Ministry of Rural Development",
+  "department": "Rural Livelihoods Division",
+  "category": "employment",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Rural poor women organized into Self Help Groups (SHGs)"
+  ],
+  "benefits": "Revolving Fund of Rs. 20,000 to Rs. 30,000 per SHG, Community Investment Support Fund (CIF) up to Rs. 2.50 lakh per SHG, and collateral-free bank loans up to Rs. 20 lakh with interest subvention down to 7% p.a.",
+  "official_url": "https://rural.nic.in/",
+  "application_url": "https://rural.nic.in/",
+  "source_url": "https://rural.nic.in/day-nrlm-framework.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Rural Development, Government of India.",
+      "source_url": "https://rural.nic.in/day-nrlm-framework.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2022-05-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "DAY-NRLM Mission Document Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored rural livelihood program implemented across all rural districts of India.",
+      "source_url": "https://rural.nic.in/day-nrlm-framework.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2022-05-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Coverage and Scope",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Rural women from vulnerable households organized into village-level Self Help Groups (SHGs).",
+      "source_url": "https://rural.nic.in/day-nrlm-framework.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2022-05-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Target Group Identification",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Revolving fund, community investment fund, and interest subvention reducing loan interest to 7% for prompt repayment.",
+      "source_url": "https://rural.nic.in/day-nrlm-framework.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2022-05-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Financial Support Architecture",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official portal hosted by Ministry of Rural Development at rural.nic.in.",
+      "source_url": "https://rural.nic.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Rural Livelihoods Mission Page",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Mobilized over 10 crore rural women into nearly 90 lakh SHGs across India with Lakhpati Didi saturation drive.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2048509",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-19",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2048509",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Beneficiary must be a verified member of a functional SHG adhering to Panchasutra principles.",
+    "all": [
+      {
+        "field": "is_rural",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "gender",
+        "operator": "equals",
+        "value": "female"
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://rural.nic.in/day-nrlm-framework.pdf"
+    },
+    {
+      "document_type": "shg_passbook",
+      "title": "SHG Membership Passbook / Resolution Copy",
+      "description": "Proof of membership in registered Self Help Group.",
+      "is_mandatory": true,
+      "issuing_authority": "Self Help Group / Village Organization",
+      "source_url": "https://rural.nic.in/day-nrlm-framework.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Bank Account Passbook",
+      "description": "SHG savings bank account passbook.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://rural.nic.in/day-nrlm-framework.pdf"
+    }
+  ]
+}

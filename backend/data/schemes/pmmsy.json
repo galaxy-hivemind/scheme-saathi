@@ -1,0 +1,133 @@
+{
+  "scheme_code": "PMMSY",
+  "name": "Pradhan Mantri Matsya Sampada Yojana",
+  "short_title": "PMMSY",
+  "description": "Flagship scheme for sustainable and responsible development of fisheries sector to boost fish production, enhance fishers income, modernize infrastructure and build robust cold-chain networks.",
+  "ministry": "Ministry of Fisheries, Animal Husbandry and Dairying",
+  "department": "Department of Fisheries",
+  "category": "agriculture",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Fishers, fish farmers, fish workers, fish vendors, and fisheries self-help groups"
+  ],
+  "benefits": "Financial assistance up to 40% of project cost for general category and 60% for SC/ST/Women beneficiaries for aquaculture units, biofloc, cold storage, and modern fishing craft.",
+  "official_url": "https://dof.gov.in/",
+  "application_url": "https://dof.gov.in/",
+  "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Fisheries, Ministry of Fisheries, Animal Husbandry and Dairying, Government of India.",
+      "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Fisheries",
+      "publication_date": "2020-06-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMMSY Operational Guidelines Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored scheme implemented across marine and inland sectors of all States and Union Territories.",
+      "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Fisheries",
+      "publication_date": "2020-06-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scheme Structure and Coverage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Fishers, fish farmers, SHGs, JLGs, and Fisheries Cooperatives engaged in fisheries and allied aquaculture activities.",
+      "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Fisheries",
+      "publication_date": "2020-06-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Beneficiary Classification",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Subsidies ranging from 40% to 60% of unit capital cost for approved fisheries and aquaculture activities.",
+      "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Fisheries",
+      "publication_date": "2020-06-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Unit Costs and Subsidy Patterns",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official Department of Fisheries portal hosted at dof.gov.in.",
+      "source_url": "https://dof.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Department of Fisheries",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Department of Fisheries Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Active central implementation under total investment outlay of Rs. 20,050 crore across all states.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2049102",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-22",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2049102",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Beneficiary must have required land/water body rights or vessel license for fisheries activity.",
+    "all": [
+      {
+        "field": "is_farmer",
+        "operator": "equals",
+        "value": true
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf"
+    },
+    {
+      "document_type": "fisheries_license",
+      "title": "Fisheries Identity / Vessel Registration / Land Document",
+      "description": "Proof of fishing activity, registered fishing vessel, or lease/ownership of pond.",
+      "is_mandatory": true,
+      "issuing_authority": "State Fisheries Department",
+      "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Bank Account Passbook",
+      "description": "Bank account details for subsidy transfer via DBT.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://dof.gov.in/pmmsy_guidelines.pdf"
+    }
+  ]
+}

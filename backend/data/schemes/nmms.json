@@ -1,0 +1,147 @@
+{
+  "scheme_code": "NMMS",
+  "name": "National Means-cum-Merit Scholarship Scheme",
+  "short_title": "NMMSS",
+  "description": "Centrally sponsored scholarship scheme to award scholarships to meritorious students of economically weaker sections to arrest dropouts at Class VIII and encourage secondary stage education.",
+  "ministry": "Ministry of Education",
+  "department": "Department of School Education and Literacy",
+  "category": "education",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Meritorious students from economically weaker sections studying in Class IX to XII in Government or Local Body schools",
+    "Students whose parental annual income does not exceed Rs. 3,50,000"
+  ],
+  "benefits": "Scholarship of Rs. 12,000 per annum (Rs. 1,000 per month) from Class IX through Class XII, credited directly to student bank accounts through DBT via PFMS.",
+  "official_url": "https://scholarships.gov.in/",
+  "application_url": "https://scholarships.gov.in/",
+  "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of School Education and Literacy, Ministry of Education, Government of India.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-05-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "NMMSS Operational Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored scholarship scheme covering school students across all States and Union Territories.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-05-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 2, Scope and Coverage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Students studying as regular students in government, government-aided and local body schools with parental income up to Rs. 3.5 lakh who pass the selection test.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-05-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 3, Eligibility Criteria",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 12,000 per annum disbursed annually into student bank accounts through PFMS-DBT mode.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": "2023-05-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 4, Rate and Disbursement",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official registration and renewal portal hosted on National Scholarship Portal at scholarships.gov.in.",
+      "source_url": "https://scholarships.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Education",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "NSP NMMSS Guidelines",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Continuous implementation with 100,000 fresh scholarships awarded each year across States and UTs.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2047819",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-18",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2047819",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Students of Kendriya Vidyalayas, Jawahar Navodaya Vidyalayas, Sainik Schools, and residential schools run by State Governments are not eligible.",
+    "all": [
+      {
+        "field": "is_student",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "annual_income",
+        "operator": "less_than_or_equal",
+        "value": 350000
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "Student Aadhaar card.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf"
+    },
+    {
+      "document_type": "income_certificate",
+      "title": "Parental Income Certificate",
+      "description": "Revenue department proof confirming parental income <= Rs. 3,50,000 p.a.",
+      "is_mandatory": true,
+      "issuing_authority": "Tehsildar / Competent Revenue Officer",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf"
+    },
+    {
+      "document_type": "marksheet_7",
+      "title": "Class VII Marksheet",
+      "description": "Marksheet showing minimum 55% marks (50% for SC/ST) in Class VII examination.",
+      "is_mandatory": true,
+      "issuing_authority": "Headmaster of School",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Student Bank Account Passbook",
+      "description": "Bank account in student's name in SBI or any public sector bank.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/NMMSS_Guidelines.pdf"
+    }
+  ]
+}

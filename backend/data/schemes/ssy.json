@@ -1,0 +1,138 @@
+{
+  "scheme_code": "SSY",
+  "name": "Sukanya Samriddhi Yojana",
+  "short_title": "SSY",
+  "description": "Government-backed small savings scheme under Beti Bachao Beti Padhao campaign to secure the financial future of girl children through high compounding interest rates and complete tax exemptions.",
+  "ministry": "Ministry of Finance",
+  "department": "Department of Economic Affairs",
+  "category": "women_welfare",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Parents or legal guardians of a girl child from her birth up to the age of 10 years (maximum two accounts per family)"
+  ],
+  "benefits": "Highest small savings interest rate (8.2% p.a.), triple tax exemption under Section 80C (EEE status), partial withdrawal up to 50% for higher education after age 18, and full account maturity after 21 years from account opening.",
+  "official_url": "https://financialservices.gov.in/",
+  "application_url": "https://financialservices.gov.in/",
+  "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Economic Affairs, Ministry of Finance, Government of India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf",
+      "source_type": "gazette",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2019-12-12",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "GSR 914(E), Sukanya Samriddhi Account Scheme Rules 2019",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central small savings scheme offered through all Post Offices and authorized commercial bank branches in India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf",
+      "source_type": "gazette",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2019-12-12",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Rule 3, Scope and Agency",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Account can be opened by the guardian in the name of a girl child from the date of her birth until she attains the age of ten years.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf",
+      "source_type": "gazette",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2019-12-12",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Rule 4, Opening of Account",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Guaranteed annual compounding interest (8.2%), EEE tax status, minimum annual deposit of Rs. 250 and maximum of Rs. 1.50 lakh.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf",
+      "source_type": "gazette",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2019-12-12",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Rule 5, Deposits and Interest",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official rules and notifications published at financialservices.gov.in.",
+      "source_url": "https://financialservices.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "DFS Small Savings Section",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Over 3.5 crore accounts actively opened with highest uptake under national girl-child financial literacy initiatives.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2010892",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-03-05",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2010892",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Maximum 2 accounts per family; exceptions allowed for triplets or twin girls born in second delivery.",
+    "all": [
+      {
+        "field": "gender",
+        "operator": "equals",
+        "value": "female"
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 10
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "birth_certificate",
+      "title": "Birth Certificate of Girl Child",
+      "description": "Official birth certificate of the girl child issued by municipal registrar or competent local authority.",
+      "is_mandatory": true,
+      "issuing_authority": "Municipal Corporation / Registrar of Births and Deaths",
+      "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf"
+    },
+    {
+      "document_type": "aadhaar_guardian",
+      "title": "Aadhaar Card of Parent/Guardian",
+      "description": "Identity and address proof of the opening parent or legal guardian.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf"
+    },
+    {
+      "document_type": "pan_guardian",
+      "title": "PAN Card of Parent/Guardian",
+      "description": "Permanent Account Number of parent/guardian.",
+      "is_mandatory": true,
+      "issuing_authority": "Income Tax Department",
+      "source_url": "https://financialservices.gov.in/sites/default/files/SSY_Rules_Gazette.pdf"
+    }
+  ]
+}

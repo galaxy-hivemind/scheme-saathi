@@ -1,8 +1,8 @@
 """
 Application configuration loaded from environment variables with production security validation.
 """
-from typing import List, Set
-from pydantic import model_validator
+from typing import List, Set, Union
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 INSECURE_SECRET_PATTERNS: Set[str] = {
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-1.5-pro"
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    ALLOWED_ORIGINS: List[str] = [
+    ALLOWED_ORIGINS: Union[str, List[str]] = [
         "http://localhost:5173",
         "http://localhost:3000",
     ]
@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # ── File storage ──────────────────────────────────────────────────────────
     STORAGE_BUCKET: str = "user-documents"
     MAX_UPLOAD_SIZE_MB: int = 10
-    ALLOWED_FILE_TYPES: List[str] = ["pdf", "jpg", "jpeg", "png"]
+    ALLOWED_FILE_TYPES: Union[str, List[str]] = ["pdf", "jpg", "jpeg", "png"]
 
     # ── Rate limiting ─────────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 60
@@ -76,6 +76,19 @@ class Settings(BaseSettings):
 
     # ── Background jobs ───────────────────────────────────────────────────────
     JOBS_ENABLED: bool = True
+
+    @field_validator("ALLOWED_ORIGINS", "ALLOWED_FILE_TYPES", mode="after")
+    @classmethod
+    def parse_comma_separated_list(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
 
     @model_validator(mode="after")
     def validate_production_and_security(self) -> "Settings":

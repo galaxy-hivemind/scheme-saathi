@@ -1,0 +1,130 @@
+{
+  "scheme_code": "PMSBY",
+  "name": "Pradhan Mantri Suraksha Bima Yojana",
+  "short_title": "PMSBY",
+  "description": "Accident insurance scheme offering financial coverage against accidental death and permanent total or partial disability to bank account holders.",
+  "ministry": "Ministry of Finance",
+  "department": "Department of Financial Services",
+  "category": "social_security",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Individuals aged between 18 and 70 years holding a savings bank or post office account"
+  ],
+  "benefits": "Accidental death and permanent total disability cover of Rs. 2,00,000, and permanent partial disability cover of Rs. 1,00,000 for an annual premium of only Rs. 20 auto-debited from bank account.",
+  "official_url": "https://financialservices.gov.in/",
+  "application_url": "https://financialservices.gov.in/",
+  "source_url": "https://financialservices.gov.in/sites/default/files/PMSBY_Rules_Revised.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Financial Services, Ministry of Finance, Government of India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMSBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMSBY Rules Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central accidental insurance scheme available through all banking and postal channels across India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMSBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scope",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "All savings bank or post office account holders aged 18 to 70 years with auto-debit consent.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMSBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Eligibility",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 2 lakh for accidental death or total loss of sight/limbs, Rs. 1 lakh for partial disability at Rs. 20 annual premium.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMSBY_Rules_Revised.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2022-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Benefit Slabs",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official rules and claim formats hosted on DFS portal at financialservices.gov.in.",
+      "source_url": "https://financialservices.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "DFS PMSBY Page",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Over 44 crore cumulative enrolments with universal coverage drive under Jan Suraksha campaign.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2020780",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-05-09",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2020780",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Covers accident-related death and disabilities only; natural death or suicide is excluded.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 70
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMSBY_Rules_Revised.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Savings Bank Account Passbook",
+      "description": "Active savings account with auto-debit consent.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank / Post Office",
+      "source_url": "https://financialservices.gov.in/sites/default/files/PMSBY_Rules_Revised.pdf"
+    }
+  ]
+}

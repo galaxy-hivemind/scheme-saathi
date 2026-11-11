@@ -1,0 +1,138 @@
+{
+  "scheme_code": "PM-VISHWAKARMA",
+  "name": "PM Vishwakarma Scheme",
+  "short_title": "PM Vishwakarma",
+  "description": "Central sector scheme providing holistic end-to-end support to traditional artisans and craftspeople working with hands and tools across 18 traditional trades.",
+  "ministry": "Ministry of Micro, Small and Medium Enterprises",
+  "department": "Department of MSME",
+  "category": "skill_development",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Traditional artisans and craftspeople engaged in one of 18 notified family-based trades (carpenters, blacksmiths, goldsmiths, potters, sculptors, cobblers, masons, etc.) aged 18 years and above"
+  ],
+  "benefits": "Recognition as Vishwakarma with ID card and certificate, basic skill training (5-7 days) with Rs. 500/day stipend, modern toolkit incentive of Rs. 15,000 via e-RUPI, collateral-free credit up to Rs. 3,00,000 (Tranche 1: Rs. 1 lakh, Tranche 2: Rs. 2 lakh) at 5% concessional interest rate, and digital transaction incentives.",
+  "official_url": "https://pmvishwakarma.gov.in/",
+  "application_url": "https://pmvishwakarma.gov.in/",
+  "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered jointly by the Ministry of MSME, Ministry of Skill Development and Entrepreneurship, and Ministry of Finance.",
+      "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-09-17",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PM Vishwakarma Scheme Guidelines Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central sector scheme covering traditional artisans across all rural and urban areas of India.",
+      "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-09-17",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scope and Coverage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Artisans and craftspeople self-employed in one of the 18 specified trades on self-employment basis.",
+      "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-09-17",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Eligible Trades and Beneficiaries",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Vishwakarma ID, basic and advanced skill training, Rs. 15,000 toolkit voucher, and collateral-free enterprise credit up to Rs. 3 lakh at 5% interest.",
+      "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-09-17",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Components of the Scheme",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Online registration portal hosted at pmvishwakarma.gov.in.",
+      "source_url": "https://pmvishwakarma.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PM Vishwakarma Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Over 20 lakh successful applications verified through 3-tier Gram Panchayat/ULB verification process.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2056711",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-09-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2056711",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Beneficiary must not have availed loans under PMEGP, PM SVANidhi or Mudra in past 5 years and must not be a government employee or family member.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "is_artisan",
+        "operator": "equals",
+        "value": true
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof with biometric authentication.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Aadhaar-Seeded Bank Account Passbook",
+      "description": "Active bank account for receiving skill stipend and toolkit voucher.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf"
+    },
+    {
+      "document_type": "trade_declaration",
+      "title": "Trade Self-Declaration",
+      "description": "Declaration of active engagement in one of the 18 notified artisan trades.",
+      "is_mandatory": true,
+      "issuing_authority": "Applicant / Gram Panchayat / Urban Local Body",
+      "source_url": "https://pmvishwakarma.gov.in/static/guidelines/PM_Vishwakarma_Guidelines.pdf"
+    }
+  ]
+}

@@ -96,7 +96,7 @@ class APIClient {
     }
   }
 
-  public async get<T>(endpoint: string, params?: Record<string, string | number | undefined>): Promise<T> {
+  public async get<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
     let url = endpoint;
     if (params) {
       const searchParams = new URLSearchParams();

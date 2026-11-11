@@ -1,0 +1,138 @@
+{
+  "scheme_code": "PMMVY",
+  "name": "Pradhan Mantri Matru Vandana Yojana",
+  "short_title": "PMMVY",
+  "description": "Centrally sponsored maternity benefit programme providing direct financial assistance to pregnant women and lactating mothers for wage compensation and health nutrition.",
+  "ministry": "Ministry of Women and Child Development",
+  "department": "Department of Women and Child Development",
+  "category": "women_welfare",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Pregnant women and lactating mothers aged 19 years and above for first living child, and for second child if it is a girl child, from socially and economically disadvantaged backgrounds"
+  ],
+  "benefits": "Cash incentive of Rs. 5,000 in two instalments for first child, and Rs. 6,000 in a single instalment for second child if girl child, transferred directly via DBT into Aadhaar-seeded bank account.",
+  "official_url": "https://pmmvy.wcd.gov.in/",
+  "application_url": "https://pmmvy.wcd.gov.in/",
+  "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Women and Child Development, Government of India under Mission Shakti.",
+      "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Women and Child Development",
+      "publication_date": "2022-07-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Mission Shakti - Samarthya PMMVY Guidelines Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored maternity entitlement scheme implemented across all States and UTs.",
+      "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Women and Child Development",
+      "publication_date": "2022-07-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scope and Structure",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Pregnant women and lactating mothers who are socially and economically disadvantaged (SC/ST, differently abled, BPL/EWS, PMJAY/e-Shram beneficiaries).",
+      "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Women and Child Development",
+      "publication_date": "2022-07-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Target Beneficiaries and Eligibility",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 5,000 for first child in 2 tranches (ANC registration and childbirth with immunization); Rs. 6,000 for second girl child.",
+      "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Women and Child Development",
+      "publication_date": "2022-07-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Instalments and Conditions",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official beneficiary self-registration and Anganwadi portal hosted at pmmvy.wcd.gov.in.",
+      "source_url": "https://pmmvy.wcd.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Women and Child Development",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMMVY Portal Homepage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "PMMVY 2.0 operational with complete digital application and DBT integration benefiting over 3.7 crore mothers.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2041920",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-07",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2041920",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Women in regular employment with Central or State Government or PSUs or in receipt of similar maternity benefits under other laws are excluded.",
+    "all": [
+      {
+        "field": "gender",
+        "operator": "equals",
+        "value": "female"
+      },
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 19
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card of Mother",
+      "description": "UIDAI Aadhaar of mother linked to bank account.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf"
+    },
+    {
+      "document_type": "mcp_card",
+      "title": "Mother and Child Protection (MCP) Card",
+      "description": "RCH/MCP card with records of antenatal check-up (ANC) and infant immunization.",
+      "is_mandatory": true,
+      "issuing_authority": "Primary Health Centre / Anganwadi",
+      "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Aadhaar-Seeded Bank Passbook",
+      "description": "Individual bank account details of the mother for DBT.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank / Post Office",
+      "source_url": "https://pmmvy.wcd.gov.in/resources/PMMVY_Scheme_Guidelines.pdf"
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "scheme_code": "PMS-SC",
+  "name": "Post-Matric Scholarship for Scheduled Caste Students",
+  "short_title": "PMS-SC",
+  "description": "Centrally sponsored scholarship scheme providing comprehensive financial assistance to Scheduled Caste students studying at post-matriculation or post-secondary level to enable completion of their education.",
+  "ministry": "Ministry of Social Justice and Empowerment",
+  "department": "Department of Social Justice and Empowerment",
+  "category": "education",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Scheduled Caste students studying in Class XI, XII, undergraduate, postgraduate, or professional courses with parental annual income up to Rs. 2.50 lakh"
+  ],
+  "benefits": "Full compulsory non-refundable academic fees paid directly to institutions plus annual academic maintenance allowance up to Rs. 13,500 transferred directly via DBT into student bank accounts.",
+  "official_url": "https://scholarships.gov.in/",
+  "application_url": "https://scholarships.gov.in/",
+  "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Social Justice and Empowerment, Ministry of Social Justice and Empowerment, Government of India.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Social Justice and Empowerment",
+      "publication_date": "2021-03-31",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMS-SC Scheme Framework Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Centrally sponsored scheme implemented in 60:40 fund sharing with States (90:10 for North East).",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Social Justice and Empowerment",
+      "publication_date": "2021-03-31",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scope and Funding Pattern",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "SC students studying in post-matric courses in recognized institutions whose total family income does not exceed Rs. 2.50 lakh per annum.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Social Justice and Empowerment",
+      "publication_date": "2021-03-31",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Eligibility Conditions",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "100% compulsory tuition and non-refundable fees reimbursement plus maintenance allowance up to Rs. 13,500/year disbursed via DBT.",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Social Justice and Empowerment",
+      "publication_date": "2021-03-31",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Scale of Assistance",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Applications submitted on National Scholarship Portal at scholarships.gov.in.",
+      "source_url": "https://scholarships.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Social Justice and Empowerment",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "NSP PMS-SC Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "National DBT rollout covering over 60 lakh SC students annually through Aadhaar payment bridge.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2047120",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-16",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2047120",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Beneficiary must belong to Scheduled Caste and must not be receiving another major government scholarship.",
+    "all": [
+      {
+        "field": "is_student",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "caste_category",
+        "operator": "equals",
+        "value": "sc"
+      },
+      {
+        "field": "annual_income",
+        "operator": "less_than_or_equal",
+        "value": 250000
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof of student.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf"
+    },
+    {
+      "document_type": "caste_certificate",
+      "title": "Caste Certificate",
+      "description": "Official Scheduled Caste certificate issued by competent revenue authority.",
+      "is_mandatory": true,
+      "issuing_authority": "Sub-Divisional Magistrate / Tehsildar",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf"
+    },
+    {
+      "document_type": "income_certificate",
+      "title": "Income Certificate",
+      "description": "Income certificate proving family annual income <= Rs. 2.50 lakh.",
+      "is_mandatory": true,
+      "issuing_authority": "Tehsildar / Competent Revenue Authority",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf"
+    },
+    {
+      "document_type": "bonafide_certificate",
+      "title": "Institution Bonafide Certificate",
+      "description": "Verification of admission and fee structure in recognized post-matric institution.",
+      "is_mandatory": true,
+      "issuing_authority": "College / University Authority",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Student Bank Account Passbook",
+      "description": "Aadhaar-seeded bank account for DBT maintenance allowance.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://scholarships.gov.in/public/schemeGuidelines/PMS_SC_Guidelines.pdf"
+    }
+  ]
+}

@@ -131,3 +131,33 @@ def get_current_user(
         raise ForbiddenError("This account has been deactivated.")
 
     return user
+
+
+def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    """
+    FastAPI dependency that returns the authenticated User model if a valid token is present,
+    or None if no token or an invalid token is provided.
+    Does not raise UnauthorizedError.
+    """
+    from app.models.user import User
+
+    if not credentials or not credentials.credentials:
+        return None
+
+    try:
+        payload = decode_access_token(credentials.credentials)
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+        import uuid
+        uid = uuid.UUID(str(user_id))
+        user = db.query(User).filter(User.id == uid).first()
+        if user and user.is_active:
+            return user
+    except Exception:
+        return None
+    return None
+

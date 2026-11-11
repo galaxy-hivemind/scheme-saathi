@@ -1,0 +1,142 @@
+{
+  "scheme_code": "MGNREGA",
+  "name": "Mahatma Gandhi National Rural Employment Guarantee Act",
+  "short_title": "MGNREGA",
+  "description": "Statutory demand-driven wage employment scheme guaranteeing at least 100 days of wage employment in a financial year to every rural household whose adult members volunteer to do unskilled manual work.",
+  "ministry": "Ministry of Rural Development",
+  "department": "Department of Rural Development",
+  "category": "employment",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Adult members of rural households willing to do unskilled manual work"
+  ],
+  "benefits": "Guaranteed minimum 100 days of wage employment per financial year at statutory state wage rates, with unemployment allowance payable if employment is not provided within 15 days of demand.",
+  "official_url": "https://nrega.nic.in/",
+  "application_url": "https://nrega.nic.in/",
+  "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Rural Development, Government of India under statutory authority of the MGNREG Act, 2005.",
+      "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-02-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Master Circular, Chapter 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Statutory demand-driven national rural employment guarantee applicable to all rural districts nationwide.",
+      "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-02-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Chapter 2, Legal Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Any adult resident of a rural area who registers and applies for unskilled manual work.",
+      "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-02-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Chapter 3, Job Card and Registration",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Guaranteed 100 days of manual wage employment per household, with wages disbursed directly into bank/post office accounts via ABPS (Aadhaar-Based Payment System).",
+      "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": "2023-02-14",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Chapter 4, Wage Payment and Entitlements",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official NREGASoft management information system hosted at nrega.nic.in.",
+      "source_url": "https://nrega.nic.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Rural Development",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "NREGASoft Homepage",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Active nationwide operations disbursing daily wages across over 2.5 lakh Gram Panchayats with mandatory NMMS mobile app attendance.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2049811",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-25",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2049811",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Employment is guaranteed for unskilled manual work only; urban residents are excluded.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "is_rural",
+        "operator": "equals",
+        "value": true
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI Aadhaar card for ABPS wage credit.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf"
+    },
+    {
+      "document_type": "job_card",
+      "title": "MGNREGA Job Card",
+      "description": "Household Job Card issued by local Gram Panchayat.",
+      "is_mandatory": false,
+      "alternatives": [
+        "Job Card Application Form"
+      ],
+      "issuing_authority": "Gram Panchayat",
+      "guidance": "If not yet issued, apply at local Gram Panchayat with family details and photo.",
+      "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Bank / Post Office Passbook",
+      "description": "Savings account linked with Aadhaar NPCI mapper.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank / India Post",
+      "source_url": "https://nrega.nic.in/netnrega/mgnrega_guidelines.pdf"
+    }
+  ]
+}

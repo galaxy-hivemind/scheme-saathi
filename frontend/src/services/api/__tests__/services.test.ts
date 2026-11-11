@@ -1,10 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { apiClient } from '../client';
 import { schemeService } from '../schemeService';
 import { eligibilityService } from '../eligibilityService';
 import { applicationService } from '../applicationService';
 import { documentService } from '../documentService';
 
 describe('Frontend Services & API Contract Matching', () => {
+  beforeAll(() => {
+    apiClient.setMockMode(true);
+  });
   it('retrieves schemes list matching Scheme interface', async () => {
     const schemes = await schemeService.getSchemes();
     expect(schemes.length).toBeGreaterThan(0);

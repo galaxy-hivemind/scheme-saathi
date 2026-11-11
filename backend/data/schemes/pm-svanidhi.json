@@ -107,7 +107,8 @@
         "operator": "equals",
         "value": true
       }
-    ]
+    ],
+    "criteria_complete": false
   },
   "required_documents": [
     {
@@ -125,11 +126,12 @@
       "title": "Certificate of Vending or Identity Card",
       "description": "Certificate issued by Urban Local Body / Town Vending Committee.",
       "is_mandatory": true,
-      "alternatives": ["Letter of Recommendation (LoR) from ULB/TVC"],
+      "alternatives": [
+        "Letter of Recommendation (LoR) from ULB/TVC"
+      ],
       "issuing_authority": "Town Vending Committee / Urban Local Body",
       "guidance": "Obtain from local municipal corporation or apply for LoR through PMSVANidhi portal.",
       "source_url": "https://pmsvanidhi.mohua.gov.in/Default/ViewFile/?Path=Guidelines&FileName=Scheme_Guidelines.pdf"
     }
   ]
 }
-

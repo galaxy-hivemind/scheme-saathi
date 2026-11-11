@@ -107,7 +107,8 @@
         "operator": "equals",
         "value": true
       }
-    ]
+    ],
+    "criteria_complete": true
   },
   "required_documents": [
     {
@@ -125,11 +126,12 @@
       "title": "Ration Card or Family Identity Proof",
       "description": "Valid state ration card or family register establishing family unit.",
       "is_mandatory": false,
-      "alternatives": ["State Government Family Card"],
+      "alternatives": [
+        "State Government Family Card"
+      ],
       "issuing_authority": "Food and Civil Supplies Department",
       "guidance": "Not required for individual senior citizens aged 70+ registering via Aadhaar.",
       "source_url": "https://beneficiary.nha.gov.in/resources/guidelines"
     }
   ]
 }
-

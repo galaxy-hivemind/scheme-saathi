@@ -2,7 +2,14 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile } from '@/types';
 import { apiClient } from '@/services/api/client';
 import { profileService } from '@/services/api/profileService';
+import { authService, RegisterRequest } from '@/services/api/authService';
 import { MOCK_USER_PROFILE } from '@/services/mock/mockData';
+
+interface AuthCredentials {
+  email?: string;
+  password?: string;
+  token?: string;
+}
 
 interface AuthContextType {
   user: { id: string; email?: string } | null;
@@ -10,9 +17,10 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (token?: string) => Promise<void>;
+  login: (credentials?: AuthCredentials | string) => Promise<UserProfile | null>;
+  register: (data: RegisterRequest) => Promise<UserProfile | null>;
   logout: () => void;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => Promise<UserProfile | null>;
   updateProfileState: (updated: UserProfile) => void;
 }
 
@@ -24,21 +32,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const refreshProfile = async () => {
+  const refreshProfile = async (): Promise<UserProfile | null> => {
     try {
       const p = await profileService.getProfile();
       setProfile(p);
       if (p) {
-        setUser({ id: p.user_id, email: `${p.full_name.toLowerCase().replace(/\s+/g, '')}@example.gov.in` });
+        setUser({ id: p.user_id, email: `${p.full_name?.toLowerCase().replace(/\s+/g, '') || 'citizen'}@example.gov.in` });
       }
+      return p;
     } catch {
-      // In mock mode or if network is down
       if (apiClient.isMockMode()) {
         setProfile(MOCK_USER_PROFILE);
         setUser({ id: MOCK_USER_PROFILE.user_id, email: 'ramesh.farmer@example.com' });
+        return MOCK_USER_PROFILE;
       } else {
         setProfile(null);
         setUser(null);
+        return null;
       }
     }
   };
@@ -54,11 +64,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, [token]);
 
-  const login = async (newToken?: string) => {
-    const activeToken = newToken || 'mock-demo-jwt-token-scheme-saathi';
-    apiClient.setToken(activeToken);
-    setToken(activeToken);
-    await refreshProfile();
+  const login = async (credentials?: AuthCredentials | string): Promise<UserProfile | null> => {
+    if (typeof credentials === 'string') {
+      const activeToken = credentials || 'mock-demo-jwt-token-scheme-saathi';
+      apiClient.setToken(activeToken);
+      setToken(activeToken);
+      return await refreshProfile();
+    }
+
+    if (apiClient.isMockMode()) {
+      const activeToken = credentials?.token || 'mock-demo-jwt-token-scheme-saathi';
+      apiClient.setToken(activeToken);
+      setToken(activeToken);
+      return await refreshProfile();
+    }
+
+    const email = credentials?.email || 'ramesh.farmer@example.gov.in';
+    const password = credentials?.password || 'SecureCitizenPassword123!';
+    const res = await authService.login({ email, password });
+    apiClient.setToken(res.access_token);
+    setToken(res.access_token);
+    return await refreshProfile();
+  };
+
+  const register = async (data: RegisterRequest): Promise<UserProfile | null> => {
+    if (apiClient.isMockMode()) {
+      const activeToken = 'mock-new-citizen-token';
+      apiClient.setToken(activeToken);
+      setToken(activeToken);
+      const newMockProfile: UserProfile = {
+        id: 'mock-new-profile-id',
+        user_id: 'mock-new-user-id',
+        full_name: data.full_name || '',
+        preferred_language: 'hi',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setProfile(newMockProfile);
+      setUser({ id: 'mock-new-user-id', email: data.email });
+      return newMockProfile;
+    }
+
+    const res = await authService.register(data);
+    apiClient.setToken(res.access_token);
+    setToken(res.access_token);
+    return await refreshProfile();
   };
 
   const logout = () => {
@@ -81,6 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!token || apiClient.isMockMode(),
         isLoading,
         login,
+        register,
         logout,
         refreshProfile,
         updateProfileState,

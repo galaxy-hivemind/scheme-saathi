@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 from jose import jwt
 
-from app.core.config import Settings
+from app.core.config import Settings, settings
 from app.core.security import (
     hash_password,
     verify_password,
@@ -56,7 +56,7 @@ def test_jwt_token_creation_and_decoding():
 
 def test_jwt_missing_subject_rejection():
     # Create a token without 'sub' claim
-    token = jwt.encode({"email": "nosub@example.com", "exp": 9999999999}, "dev-scheme-saathi-jwt-secret-key-32-chars-long", algorithm="HS256")
+    token = jwt.encode({"email": "nosub@example.com", "exp": 9999999999}, settings.JWT_SECRET, algorithm="HS256")
     with pytest.raises(UnauthorizedError) as exc:
         decode_access_token(token)
     assert "missing subject" in str(exc.value.message).lower()

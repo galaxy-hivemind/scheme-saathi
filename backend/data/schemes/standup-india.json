@@ -1,0 +1,141 @@
+{
+  "scheme_code": "STANDUP-INDIA",
+  "name": "Stand-Up India Scheme",
+  "short_title": "Stand-Up India",
+  "description": "Credit facilitation scheme to provide bank loans between Rs. 10 lakh and Rs. 1 crore to at least one Scheduled Caste (SC) or Scheduled Tribe (ST) borrower and at least one woman borrower per bank branch for setting up greenfield enterprises.",
+  "ministry": "Ministry of Finance",
+  "department": "Department of Financial Services",
+  "category": "financial_inclusion",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "SC, ST, or Women entrepreneurs aged 18 years and above setting up a greenfield enterprise in manufacturing, services, agri-allied, or trading sectors"
+  ],
+  "benefits": "Composite bank loans from Rs. 10 lakh up to Rs. 1 crore covering term loan and working capital with concessional margin money requirements and handholding support.",
+  "official_url": "https://financialservices.gov.in/",
+  "application_url": "https://financialservices.gov.in/",
+  "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Financial Services, Ministry of Finance, Government of India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Stand-Up India Scheme Framework Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central entrepreneurship credit scheme mandated across all scheduled commercial bank branches across India.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Branch Mandate",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "SC/ST and women entrepreneurs establishing first-time greenfield business ventures.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Borrower Criteria",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Loans between Rs. 10 lakh and Rs. 100 lakh with margin money subsidy convergence and tenor up to 7 years.",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-01-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Loan Size and Terms",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official policy and portal details hosted on DFS website at financialservices.gov.in.",
+      "source_url": "https://financialservices.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "DFS Stand-Up India Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Over 2.3 lakh loan accounts sanctioned with total disbursement exceeding Rs. 53,000 crore, extended up to 2025.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2017255",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-04-05",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2017255",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "In non-individual enterprises, at least 51% shareholding and controlling stake must be held by SC/ST or woman entrepreneur.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf"
+    },
+    {
+      "document_type": "pan_card",
+      "title": "PAN Card",
+      "description": "PAN card of applicant entrepreneur.",
+      "is_mandatory": true,
+      "issuing_authority": "Income Tax Department",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf"
+    },
+    {
+      "document_type": "caste_certificate",
+      "title": "Caste Certificate (for SC/ST applicants)",
+      "description": "Valid caste certificate issued by competent revenue authority.",
+      "is_mandatory": false,
+      "issuing_authority": "Tehsildar / Sub-Divisional Magistrate",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf"
+    },
+    {
+      "document_type": "project_report",
+      "title": "Project Report / Business Plan",
+      "description": "Comprehensive project report detailing capital assets, financial projections, and greenfield nature of enterprise.",
+      "is_mandatory": true,
+      "issuing_authority": "Applicant / Chartered Accountant",
+      "source_url": "https://financialservices.gov.in/sites/default/files/StandUp_India_Guidelines.pdf"
+    }
+  ]
+}

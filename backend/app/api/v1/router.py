@@ -2,7 +2,7 @@
 Top-level API v1 router — aggregates all sub-routers.
 """
 from fastapi import APIRouter
-from app.api.v1 import health, auth, profile, schemes
+from app.api.v1 import health, auth, profile, schemes, eligibility, agent, documents, applications
 
 api_router = APIRouter()
 
@@ -18,11 +18,14 @@ api_router.include_router(profile.router, prefix="/profile", tags=["Profile"])
 # Scheme Catalogue (authenticated)
 api_router.include_router(schemes.router, prefix="/schemes", tags=["Schemes"])
 
-# Future feature routers (Phases 3-8):
-# from app.api.v1 import eligibility, documents, applications, tracking, notifications, agent
-# api_router.include_router(eligibility.router, prefix="/eligibility", tags=["Eligibility"])
-# api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
-# api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])
-# api_router.include_router(tracking.router, prefix="/tracking", tags=["Tracking"])
-# api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
-# api_router.include_router(agent.router, prefix="/agent", tags=["Agent"])
+# Deterministic Eligibility Evaluation Engine (Phase 3)
+api_router.include_router(eligibility.router, prefix="/eligibility", tags=["Eligibility"])
+
+# Multilingual AI Voice Assistant (Phase 3 Voice AI)
+api_router.include_router(agent.router, prefix="/agent", tags=["Agent"])
+
+# Citizen Document Vault & Checklist (authenticated)
+api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
+
+# Application Readiness & Official Portal Guidance (authenticated)
+api_router.include_router(applications.router, prefix="/applications", tags=["Applications"])

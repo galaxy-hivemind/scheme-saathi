@@ -1,0 +1,143 @@
+{
+  "scheme_code": "NSMSNY-MH",
+  "name": "Namo Shetkari Maha Samman Nidhi Yojana",
+  "short_title": "Namo Shetkari",
+  "description": "Welfare scheme of the Government of Maharashtra supplementing PM-KISAN, providing an additional financial benefit of Rs. 6,000 annually to landholder farmer families in Maharashtra.",
+  "ministry": "Government of Maharashtra",
+  "department": "Department of Agriculture, Maharashtra",
+  "category": "agriculture",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "All PM-KISAN registered landholding farmer families resident in the State of Maharashtra"
+  ],
+  "benefits": "Direct financial assistance of Rs. 6,000 per year paid in three equal instalments of Rs. 2,000 via DBT into Aadhaar-seeded bank accounts, in addition to PM-KISAN benefits (total Rs. 12,000/year for Maharashtra farmers).",
+  "official_url": "https://krishi.maharashtra.gov.in/",
+  "application_url": "https://krishi.maharashtra.gov.in/",
+  "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Agriculture, Government of Maharashtra under State Government Resolution.",
+      "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Agriculture, Maharashtra",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Maharashtra Government Resolution No. NSM-2023/CR-45/11-A",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "State agricultural income support scheme covering all districts across Maharashtra.",
+      "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Agriculture, Maharashtra",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 1.2, Territorial Scope",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "All landholding farmer families in Maharashtra found eligible and receiving benefits under PM-KISAN.",
+      "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Agriculture, Maharashtra",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 2.1, Eligibility Criteria",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 6,000 per year transferred in three equal instalments of Rs. 2,000 via DBT into Aadhaar-seeded accounts.",
+      "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Agriculture, Maharashtra",
+      "publication_date": "2023-06-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 3.1, Financial Assistance Slabs",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official Maharashtra Agriculture portal hosted at krishi.maharashtra.gov.in.",
+      "source_url": "https://krishi.maharashtra.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Department of Agriculture, Maharashtra",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Maharashtra Agriculture Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Disbursements synchronized with PM-KISAN installments benefiting over 90 lakh farmer families across Maharashtra.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2009823",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-02-28",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2009823",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Beneficiary must be a verified PM-KISAN beneficiary with land in Maharashtra.",
+    "all": [
+      {
+        "field": "state",
+        "operator": "equals",
+        "value": "Maharashtra"
+      },
+      {
+        "field": "is_landholding_farmer",
+        "operator": "equals",
+        "value": true
+      },
+      {
+        "field": "is_income_tax_payer",
+        "operator": "equals",
+        "value": false
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof linked with bank account.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf"
+    },
+    {
+      "document_type": "land_records",
+      "title": "Maharashtra Land Records (7/12 Extract and 8-A)",
+      "description": "Digitally signed Satbara (7/12) and 8-A khatauni extract from Mahabhulekh.",
+      "is_mandatory": true,
+      "issuing_authority": "Revenue Department, Maharashtra",
+      "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Aadhaar-Seeded Bank Passbook",
+      "description": "Bank account verified on PM-KISAN portal.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://krishi.maharashtra.gov.in/Site/Upload/GR/GR_Namo_Shetkari_2023.pdf"
+    }
+  ]
+}

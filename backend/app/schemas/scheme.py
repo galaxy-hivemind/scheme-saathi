@@ -273,7 +273,8 @@ class SchemeDetailResponse(BaseModel):
     last_retrieved_at: datetime
     last_verified_at: Optional[datetime] = None
     source_evidence: List[SourceEvidenceEntry]
-    required_documents: List[SchemeDocumentResponse]
+    required_documents: List[SchemeDocumentResponse] = Field(default_factory=list)
+    documents: List[SchemeDocumentResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

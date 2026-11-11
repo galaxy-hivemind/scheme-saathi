@@ -112,7 +112,8 @@
         "operator": "equals",
         "value": false
       }
-    ]
+    ],
+    "criteria_complete": false
   },
   "required_documents": [
     {
@@ -130,11 +131,12 @@
       "title": "Ration Card or BPL Certificate",
       "description": "Document establishing family composition and economic status.",
       "is_mandatory": true,
-      "alternatives": ["Self-declaration for migrant families as per Ujjwala 2.0 Annexure"],
+      "alternatives": [
+        "Self-declaration for migrant families as per Ujjwala 2.0 Annexure"
+      ],
       "issuing_authority": "State Food and Civil Supplies Department",
       "guidance": "Migrant workers may submit Annexure-I self-declaration in lieu of state ration card.",
       "source_url": "https://www.pmuy.gov.in/files/PMUY-2.0-Guidelines.pdf"
     }
   ]
 }
-

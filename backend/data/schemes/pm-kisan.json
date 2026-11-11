@@ -112,7 +112,8 @@
         "operator": "equals",
         "value": false
       }
-    ]
+    ],
+    "criteria_complete": true
   },
   "required_documents": [
     {
@@ -130,7 +131,10 @@
       "title": "Land Ownership Records (Khatauni/Patta)",
       "description": "Official land record extract demonstrating cultivable land title in beneficiary name.",
       "is_mandatory": true,
-      "alternatives": ["Record of Rights (RoR)", "Mutation Extract"],
+      "alternatives": [
+        "Record of Rights (RoR)",
+        "Mutation Extract"
+      ],
       "issuing_authority": "State Revenue Department",
       "guidance": "Obtain certified copy from state revenue Bhulekh portal or local Tehsildar.",
       "source_url": "https://pmkisan.gov.in/Documents/OperationalGuidelines.pdf"
@@ -140,11 +144,12 @@
       "title": "Bank Passbook or Account Details",
       "description": "Copy of bank passbook or cancelled cheque showing IFSC and NPCI-mapped account.",
       "is_mandatory": true,
-      "alternatives": ["Bank Account Statement"],
+      "alternatives": [
+        "Bank Account Statement"
+      ],
       "issuing_authority": "Scheduled Commercial Bank / Post Office",
       "guidance": "Ensure account is Aadhaar-seeded via NPCI mapper for Direct Benefit Transfer.",
       "source_url": "https://pmkisan.gov.in/Documents/OperationalGuidelines.pdf"
     }
   ]
 }
-

@@ -108,7 +108,8 @@
         "operator": "equals",
         "value": true
       }
-    ]
+    ],
+    "criteria_complete": true
   },
   "required_documents": [
     {
@@ -126,11 +127,13 @@
       "title": "Income Certificate",
       "description": "Proof of annual family income to verify EWS/LIG/MIG classification.",
       "is_mandatory": true,
-      "alternatives": ["Form 16", "Income Tax Return"],
+      "alternatives": [
+        "Form 16",
+        "Income Tax Return"
+      ],
       "issuing_authority": "Revenue Authority / Tehsildar",
       "guidance": "Must be valid for the current financial year.",
       "source_url": "https://pmay-urban.gov.in/uploads/guidelines/PMAY-U-2-Guidelines.pdf"
     }
   ]
 }
-

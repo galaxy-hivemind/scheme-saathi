@@ -7,6 +7,7 @@ export interface SchemeFilterParams {
   category?: string;
   page?: number;
   limit?: number;
+  include_pending?: boolean;
 }
 
 export const schemeService = {
@@ -27,7 +28,18 @@ export const schemeService = {
       }
       return Promise.resolve(filtered);
     }
-    return apiClient.get<Scheme[]>('/schemes', params as Record<string, string | number | undefined>);
+    const res = await apiClient.get<Scheme[] | { items: Scheme[] }>('/schemes', {
+      include_pending: true,
+      limit: 50,
+      ...params,
+    } as Record<string, string | number | boolean | undefined>);
+    if (Array.isArray(res)) {
+      return res;
+    }
+    if (res && Array.isArray((res as { items?: Scheme[] }).items)) {
+      return (res as { items: Scheme[] }).items;
+    }
+    return [];
   },
 
   async getSchemeById(schemeId: string): Promise<Scheme> {

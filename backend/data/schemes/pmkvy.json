@@ -107,7 +107,8 @@
         "operator": "less_than_or_equal",
         "value": 45
       }
-    ]
+    ],
+    "criteria_complete": false
   },
   "required_documents": [
     {
@@ -125,11 +126,13 @@
       "title": "Educational Qualification Certificate or Marksheet",
       "description": "Proof of highest education attained (10th/12th or school leaving certificate).",
       "is_mandatory": false,
-      "alternatives": ["School Leaving Certificate", "Self-declaration of basic literacy for RPL"],
+      "alternatives": [
+        "School Leaving Certificate",
+        "Self-declaration of basic literacy for RPL"
+      ],
       "issuing_authority": "Recognized Educational Board or School",
       "guidance": "Required for specialized technical short-term courses with minimum entry qualifications.",
       "source_url": "https://www.msde.gov.in/en/schemes-initiatives/schemes-initiatives-under-msde/pmkvy"
     }
   ]
 }
-

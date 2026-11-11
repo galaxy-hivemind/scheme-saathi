@@ -1,0 +1,144 @@
+{
+  "scheme_code": "KCC",
+  "name": "Kisan Credit Card Scheme",
+  "short_title": "KCC",
+  "description": "Institutional credit facility providing adequate and timely credit to farmers for crop cultivation, post-harvest expenses, working capital, and farm asset maintenance at an effective interest rate of 4% per annum with prompt repayment incentive.",
+  "ministry": "Ministry of Agriculture and Farmers Welfare",
+  "department": "Department of Agriculture and Farmers Welfare",
+  "category": "agriculture",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Individual and joint owner cultivators",
+    "Tenant farmers, oral lessees, and sharecroppers",
+    "Self Help Groups (SHGs) and Joint Liability Groups (JLGs) of farmers"
+  ],
+  "benefits": "Revolving agricultural credit facility up to Rs. 3,00,000 (sub-limit Rs. 2,00,000 for allied activities). Statutory lending structure: Banks extend credit at a benchmark concessional rate of 7% p.a. (supported by 1.5% institutional interest subvention from GoI to banks under the Modified Interest Subvention Scheme - MISS). Farmers who repay on or before the due date (tenor up to 1 year) receive a 3% Prompt Repayment Incentive (PRI), resulting in an effective net interest rate of 4% p.a. If repayment is delayed beyond the due date, the 3% PRI is forfeited and the borrower is charged the full 7% p.a. rate. Collateral-free credit is available up to Rs. 1.60 Lakh.",
+  "official_url": "https://agricoop.nic.in/",
+  "application_url": "https://www.jansamarth.in/",
+  "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Agriculture and Farmers Welfare in coordination with RBI and NABARD.",
+      "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2023-01-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "NABARD/RBI KCC Scheme Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central agricultural credit scheme implemented through Commercial Banks, RRBs, and Cooperative Banks nationwide.",
+      "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2023-01-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Institutional Scope",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "All farmers, tenant cultivators, oral lessees, sharecroppers, and allied sector animal husbandry/fisheries workers.",
+      "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2023-01-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Eligible Beneficiaries",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Short-term credit limit up to Rs. 3 lakh at 4% effective interest with collateral waiver up to Rs. 1.6 lakh and ATM-enabled RuPay debit card.",
+      "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": "2023-01-10",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Credit Limit and Subvention",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official Ministry portal and bank branch application guidelines hosted at agricoop.nic.in.",
+      "source_url": "https://agricoop.nic.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Agriculture and Farmers Welfare",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "AgriCoop KCC Section",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Nationwide saturation drive under Kisan Rin Portal (KRP) integrating DBT and automated interest subvention.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2048991",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-20",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2048991",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Credit sanction is subject to bank credit appraisal and verification of cultivable land or allied activity.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      },
+      {
+        "field": "is_farmer",
+        "operator": "equals",
+        "value": true
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf"
+    },
+    {
+      "document_type": "land_records",
+      "title": "Land Title / Possession Proof",
+      "description": "Copy of land revenue record (7/12, Patta, Khatauni) or lease agreement.",
+      "is_mandatory": true,
+      "alternatives": [
+        "Lease Deed",
+        "Khasra Extract"
+      ],
+      "issuing_authority": "State Revenue Department",
+      "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf"
+    },
+    {
+      "document_type": "passport_photo",
+      "title": "Passport Size Photographs",
+      "description": "Two recent passport size photographs of applicant.",
+      "is_mandatory": true,
+      "issuing_authority": "Applicant",
+      "source_url": "https://agricoop.nic.in/kcc-guidelines.pdf"
+    }
+  ]
+}

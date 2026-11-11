@@ -1,0 +1,169 @@
+{
+  "scheme_code": "MLBY-MH",
+  "name": "Mukhyamantri Majhi Ladki Bahin Yojana",
+  "short_title": "Majhi Ladki Bahin",
+  "description": "Flagship welfare scheme of the Government of Maharashtra providing direct financial assistance to women aged 21 to 65 years from economically weaker households to foster financial independence and family nutrition.",
+  "ministry": "Government of Maharashtra",
+  "department": "Department of Women and Child Development, Maharashtra",
+  "category": "women_welfare",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Women permanent residents of Maharashtra aged 21 to 65 years whose family annual income does not exceed Rs. 2.5 lakh"
+  ],
+  "benefits": "Direct financial benefit of Rs. 1,500 per month (Rs. 18,000 per year) transferred directly into the Aadhaar-seeded DBT bank accounts of eligible women.",
+  "official_url": "https://ladkibahin.maharashtra.gov.in/",
+  "application_url": "https://ladkibahin.maharashtra.gov.in/",
+  "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf",
+  "scheme_status": "pending_verification",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": null,
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Women and Child Development, Government of Maharashtra.",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Women and Child Development, Maharashtra",
+      "publication_date": "2024-06-28",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Maharashtra Government Resolution No. WCD-2024/CR-89/Desk-02",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "State welfare initiative covering women across urban and rural Maharashtra.",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Women and Child Development, Maharashtra",
+      "publication_date": "2024-06-28",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 2, Scope and Jurisdiction",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Women aged 21 to 65 residing in Maharashtra with family annual income up to Rs. 2.50 lakh holding yellow/orange ration card.",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Women and Child Development, Maharashtra",
+      "publication_date": "2024-06-28",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 3, Eligibility Framework",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Rs. 1,500 monthly DBT transfer directly to bank account of verified woman beneficiary.",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Women and Child Development, Maharashtra",
+      "publication_date": "2024-06-28",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Clause 4, Benefit Transfer Schedule",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official Maharashtra Ladki Bahin portal hosted at ladkibahin.maharashtra.gov.in.",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Government of Maharashtra",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Ladki Bahin Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "November 2026 operational modalities, ongoing verification audits, and state election model code compliance guidelines pending final gazette corroboration.",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Department of Women and Child Development, Maharashtra",
+      "publication_date": "2024-06-28",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 6, Verification Guidelines",
+      "verification_status": "unverified",
+      "verified_at": null
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": false,
+    "is_provisional": true,
+    "limitations": "Provisional criteria; family income must be under Rs. 2.50 lakh and beneficiary cannot hold more than 5 acres of agricultural land.",
+    "all": [
+      {
+        "field": "state",
+        "operator": "equals",
+        "value": "Maharashtra"
+      },
+      {
+        "field": "gender",
+        "operator": "equals",
+        "value": "female"
+      },
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 21
+      },
+      {
+        "field": "age",
+        "operator": "less_than_or_equal",
+        "value": 65
+      },
+      {
+        "field": "annual_income",
+        "operator": "less_than_or_equal",
+        "value": 250000
+      }
+    ],
+    "criteria_complete": false
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf"
+    },
+    {
+      "document_type": "domicile_certificate",
+      "title": "Maharashtra Domicile Certificate / 15-Year Ration Card",
+      "description": "Proof of 15 years domicile or residence in Maharashtra.",
+      "is_mandatory": true,
+      "alternatives": [
+        "15-Year Old Ration Card",
+        "Voter ID Card"
+      ],
+      "issuing_authority": "Tehsildar / Competent Authority",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf"
+    },
+    {
+      "document_type": "income_certificate",
+      "title": "Income Certificate / Yellow or Orange Ration Card",
+      "description": "Proof of family annual income up to Rs. 2.50 lakh.",
+      "is_mandatory": true,
+      "alternatives": [
+        "Yellow Ration Card",
+        "Orange Ration Card"
+      ],
+      "issuing_authority": "Food and Civil Supplies Department / Tehsildar",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf"
+    },
+    {
+      "document_type": "bank_passbook",
+      "title": "Aadhaar-Seeded Bank Passbook",
+      "description": "Individual bank account with Aadhaar DBT enabled.",
+      "is_mandatory": true,
+      "issuing_authority": "Bank",
+      "source_url": "https://ladkibahin.maharashtra.gov.in/guidelines.pdf"
+    }
+  ]
+}

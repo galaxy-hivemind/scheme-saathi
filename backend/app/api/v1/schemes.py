@@ -146,6 +146,7 @@ def get_scheme(
         last_verified_at=scheme.last_verified_at,
         source_evidence=evidence_entries,
         required_documents=[SchemeDocumentResponse.model_validate(doc) for doc in active_docs],
+        documents=[SchemeDocumentResponse.model_validate(doc) for doc in active_docs],
     )
 
     return APIResponse.ok(detail_data)

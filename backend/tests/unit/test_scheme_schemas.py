@@ -352,7 +352,7 @@ def test_all_seven_seed_files_conform_and_svanidhi_classification():
 
     seed_dir = Path(__file__).resolve().parent.parent.parent / "data" / "schemes"
     seed_files = list(seed_dir.glob("*.json"))
-    assert len(seed_files) == 7
+    assert len(seed_files) >= 7
 
     validated_schemes = {}
     for f in seed_files:

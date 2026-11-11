@@ -1,9 +1,12 @@
 import { apiClient } from './client';
-import { EligibilityResult } from '@/types';
+import { EligibilityResult, BatchEligibilityResponse } from '@/types';
 import { MOCK_ELIGIBILITY_RESULTS } from '../mock/mockData';
 
 export const eligibilityService = {
-  async checkEligibility(schemeId: string): Promise<EligibilityResult> {
+  async checkEligibility(
+    schemeId: string,
+    profileOverride?: Record<string, unknown>
+  ): Promise<EligibilityResult> {
     if (apiClient.isMockMode()) {
       const result = MOCK_ELIGIBILITY_RESULTS[schemeId] || {
         scheme_id: schemeId,
@@ -25,6 +28,36 @@ export const eligibilityService = {
       };
       return Promise.resolve(result);
     }
-    return apiClient.post<EligibilityResult>('/eligibility/check', { scheme_id: schemeId });
+    return apiClient.post<EligibilityResult>('/eligibility/check?include_pending=true', {
+      scheme_id: schemeId,
+      profile_override: profileOverride,
+    });
+  },
+
+  async evaluateAll(params?: {
+    include_pending?: boolean;
+    category?: string;
+    profile_override?: Record<string, unknown>;
+  }): Promise<BatchEligibilityResponse> {
+    if (apiClient.isMockMode()) {
+      const mockList: EligibilityResult[] = Object.values(MOCK_ELIGIBILITY_RESULTS);
+      const eligibleCount = mockList.filter((r) => r.result === 'eligible').length;
+      const ineligibleCount = mockList.filter((r) => r.result === 'not_eligible').length;
+      const unknownCount = mockList.length - eligibleCount - ineligibleCount;
+
+      return Promise.resolve({
+        total_evaluated: mockList.length,
+        eligible_count: eligibleCount,
+        ineligible_count: ineligibleCount,
+        unknown_count: unknownCount,
+        results: mockList,
+      });
+    }
+
+    return apiClient.post<BatchEligibilityResponse>('/eligibility/evaluate-all', {
+      include_pending: params?.include_pending ?? true,
+      category: params?.category,
+      profile_override: params?.profile_override,
+    });
   },
 };

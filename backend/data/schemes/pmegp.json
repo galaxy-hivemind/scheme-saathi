@@ -1,0 +1,142 @@
+{
+  "scheme_code": "PMEGP",
+  "name": "Prime Minister's Employment Generation Programme",
+  "short_title": "PMEGP",
+  "description": "Credit-linked subsidy programme to generate continuous and sustainable self-employment opportunities through establishment of micro-enterprises in manufacturing and services sectors.",
+  "ministry": "Ministry of Micro, Small and Medium Enterprises",
+  "department": "Department of MSME",
+  "category": "employment",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Individuals aged 18 years and above intending to establish micro-enterprises",
+    "Self Help Groups (SHGs) and institutions registered under Societies Registration Act"
+  ],
+  "benefits": "Government subsidy (margin money) of 15% to 35% of project cost (up to Rs. 50 lakh for manufacturing and Rs. 20 lakh for services), with beneficiary own contribution of only 5% to 10%.",
+  "official_url": "https://kviconline.gov.in/",
+  "application_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/index.jsp",
+  "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Ministry of Micro, Small and Medium Enterprises through Khadi and Village Industries Commission (KVIC) as single nodal agency.",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMEGP Operational Guidelines Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "Central sector credit-linked employment generation scheme active across all rural and urban areas of India.",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scheme Jurisdiction",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Any individual above 18 years of age without prior government loan default.",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Eligibility of Beneficiaries",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Margin money subsidy of 25% to 35% in rural areas and 15% to 25% in urban areas on bank loans up to Rs. 50 lakh for manufacturing and Rs. 20 lakh for services.",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": "2023-06-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Quantum and Nature of Financial Assistance",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Application submission handled end-to-end on KVIC PMEGP e-Portal at kviconline.gov.in.",
+      "source_url": "https://kviconline.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Micro, Small and Medium Enterprises",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "KVIC PMEGP e-Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Active nationwide credit linkage with more than 8 lakh micro-enterprises assisted across the country.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2040187",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-01",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2040187",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Existing units or units that have already availed government subsidy under any other central/state scheme are not eligible.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 18
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof.",
+      "is_mandatory": true,
+      "issuing_authority": "UIDAI",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf"
+    },
+    {
+      "document_type": "project_report",
+      "title": "Detailed Project Report (DPR)",
+      "description": "Business project proposal outlining manufacturing/service activity, capital expenditure and working capital requirements.",
+      "is_mandatory": true,
+      "issuing_authority": "Applicant / Chartered Accountant / MSME DI",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf"
+    },
+    {
+      "document_type": "education_certificate",
+      "title": "Educational Qualification Certificate",
+      "description": "Minimum Class VIII pass certificate for projects exceeding Rs. 10 lakh in manufacturing or Rs. 5 lakh in services.",
+      "is_mandatory": false,
+      "issuing_authority": "School / Educational Institution",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf"
+    },
+    {
+      "document_type": "pan_card",
+      "title": "PAN Card",
+      "description": "Income Tax Permanent Account Number card.",
+      "is_mandatory": true,
+      "issuing_authority": "Income Tax Department",
+      "source_url": "https://kviconline.gov.in/pmegpeportal/pmegphome/pmegp_guidelines.pdf"
+    }
+  ]
+}

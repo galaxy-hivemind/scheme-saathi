@@ -1,0 +1,130 @@
+{
+  "scheme_code": "PMJDY",
+  "name": "Pradhan Mantri Jan Dhan Yojana",
+  "short_title": "PMJDY",
+  "description": "National Mission on Financial Inclusion to ensure universal access to banking facilities with at least one basic banking account for every unbanked adult, access to credit, insurance and pension facility.",
+  "ministry": "Ministry of Finance",
+  "department": "Department of Financial Services",
+  "category": "financial_inclusion",
+  "geographic_scope": "central",
+  "target_beneficiaries": [
+    "Any Indian citizen aged 10 years and above who does not hold a bank account"
+  ],
+  "benefits": "Zero-balance Basic Savings Bank Deposit (BSBD) account, free RuPay debit card with inbuilt Rs. 2,00,000 accidental insurance cover, overdraft facility up to Rs. 10,000, and direct receipt of government DBT welfare benefits.",
+  "official_url": "https://pmjdy.gov.in/",
+  "application_url": "https://pmjdy.gov.in/",
+  "source_url": "https://pmjdy.gov.in/scheme_guidelines.pdf",
+  "scheme_status": "active",
+  "last_retrieved_at": "2026-11-10T10:00:00Z",
+  "last_verified_at": "2026-11-10T12:00:00Z",
+  "source_evidence": [
+    {
+      "claim": "name_and_ministry",
+      "statement": "Administered by the Department of Financial Services, Ministry of Finance, Government of India.",
+      "source_url": "https://pmjdy.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-08-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMJDY Mission Guidelines Section 1",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "category_and_scope",
+      "statement": "National financial inclusion mission covering all rural and urban unbanked citizens across India.",
+      "source_url": "https://pmjdy.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-08-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 2, Scope and Architecture",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "target_beneficiaries",
+      "statement": "Every unbanked individual above 10 years of age.",
+      "source_url": "https://pmjdy.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-08-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 3, Account Opening Qualifications",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "benefits",
+      "statement": "Zero balance requirement, RuPay card with Rs. 2 lakh accident insurance, and overdraft limit up to Rs. 10,000 per household.",
+      "source_url": "https://pmjdy.gov.in/scheme_guidelines.pdf",
+      "source_type": "guideline",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": "2023-08-15",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "Section 4, Account Features and Entitlements",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "official_and_application_urls",
+      "statement": "Official National Financial Inclusion portal hosted at pmjdy.gov.in.",
+      "source_url": "https://pmjdy.gov.in/",
+      "source_type": "government_portal",
+      "issuing_authority": "Ministry of Finance",
+      "publication_date": null,
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PMJDY Portal",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    },
+    {
+      "claim": "operational_status",
+      "statement": "Over 53 crore Jan Dhan bank accounts opened with total deposit balances exceeding Rs. 2.3 lakh crore.",
+      "source_url": "https://www.pib.gov.in/PressReleasePage.aspx?PRID=2049610",
+      "source_type": "pib_release",
+      "issuing_authority": "Press Information Bureau",
+      "publication_date": "2024-08-28",
+      "retrieved_at": "2026-11-10T10:00:00Z",
+      "citation": "PIB PRID 2049610",
+      "verification_status": "verified",
+      "verified_at": "2026-11-10T12:00:00Z"
+    }
+  ],
+  "eligibility_criteria": {
+    "is_authoritative": true,
+    "is_provisional": false,
+    "limitations": "Individual must not already hold an active savings bank account in any bank branch.",
+    "all": [
+      {
+        "field": "age",
+        "operator": "greater_than_or_equal",
+        "value": 10
+      }
+    ],
+    "criteria_complete": true
+  },
+  "required_documents": [
+    {
+      "document_type": "aadhaar",
+      "title": "Aadhaar Card",
+      "description": "UIDAI identity proof with current residential address.",
+      "is_mandatory": true,
+      "alternatives": [
+        "Voter ID Card",
+        "NREGA Job Card",
+        "Driving Licence"
+      ],
+      "issuing_authority": "UIDAI",
+      "source_url": "https://pmjdy.gov.in/scheme_guidelines.pdf"
+    },
+    {
+      "document_type": "passport_photo",
+      "title": "Passport Size Photographs",
+      "description": "Two recent passport size color photographs.",
+      "is_mandatory": true,
+      "issuing_authority": "Applicant",
+      "source_url": "https://pmjdy.gov.in/scheme_guidelines.pdf"
+    }
+  ]
+}
