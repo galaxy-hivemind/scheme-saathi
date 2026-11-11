@@ -11,6 +11,8 @@ from app.models.scheme_document import SchemeDocument
 from app.models.chat import ChatConversation, ChatMessage, PendingAction
 from app.models.citizen_document import CitizenDocument
 from app.models.application_draft import ApplicationDraft
+from app.models.application_status_history import ApplicationStatusHistory
+from app.models.notification import Notification
 
 __all__ = [
     "User",
@@ -25,4 +27,6 @@ __all__ = [
     "PendingAction",
     "CitizenDocument",
     "ApplicationDraft",
+    "ApplicationStatusHistory",
+    "Notification",
 ]

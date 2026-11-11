@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.beneficiary_profile import BeneficiaryProfile
     from app.models.scheme import Scheme
+    from app.models.application_status_history import ApplicationStatusHistory
+    from app.models.notification import Notification
 
 
 class ApplicationDraft(Base, TimestampMixin):
@@ -97,10 +99,20 @@ class ApplicationDraft(Base, TimestampMixin):
     scheme: Mapped["Scheme"] = orm_relationship(
         "Scheme",
     )
+    status_history: Mapped[List["ApplicationStatusHistory"]] = orm_relationship(
+        "ApplicationStatusHistory",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationStatusHistory.created_at.asc()",
+    )
+    notifications: Mapped[List["Notification"]] = orm_relationship(
+        "Notification",
+        back_populates="application",
+    )
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('DRAFT', 'READY', 'SUBMITTED', 'ARCHIVED')",
+            "status IN ('DRAFT', 'READY', 'SUBMITTED', 'IN_REVIEW', 'APPROVED', 'REJECTED', 'DISBURSED', 'ARCHIVED')",
             name="ck_application_drafts_status",
         ),
         Index(
