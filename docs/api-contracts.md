@@ -875,12 +875,28 @@ See complete specification in [Applications API Contract (v1)](api/v1/applicatio
 
 ---
 
-### Notifications
+### Tracking
+
+See complete specification in [Application Tracking API Contract (v1)](api/v1/tracking.md).
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/notifications` | JWT | List user notifications |
-| PUT | `/notifications/{id}/read` | JWT | Mark notification as read |
+| GET | `/tracking/{application_id}/timeline` | JWT | Retrieve complete chronological status timeline and audit trail |
+| POST | `/tracking/{application_id}/status` | JWT | Transition application status, append immutable audit log, and notify citizen |
+| POST | `/tracking/{application_id}/sync` | JWT | Query external government portal using reference number and sync status |
+
+---
+
+### Notifications
+
+See complete specification in [Citizen Notifications API Contract (v1)](api/v1/notifications.md).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/notifications` | JWT | List citizen notifications with pagination and `is_read` / `notification_type` filter |
+| GET | `/notifications/unread-count` | JWT | Retrieve unread notifications count for bell badge indicator |
+| PUT | `/notifications/{id}/read` | JWT | Mark specific notification as read |
+| PUT | `/notifications/read-all` | JWT | Mark all citizen notifications as read |
 
 ---
 

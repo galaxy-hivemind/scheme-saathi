@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.chat import ChatConversation, PendingAction
     from app.models.citizen_document import CitizenDocument
     from app.models.application_draft import ApplicationDraft
+    from app.models.notification import Notification
 
 
 class User(Base, TimestampMixin):
@@ -83,6 +84,11 @@ class User(Base, TimestampMixin):
     )
     application_drafts: Mapped[List["ApplicationDraft"]] = relationship(
         "ApplicationDraft",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    notifications: Mapped[List["Notification"]] = relationship(
+        "Notification",
         back_populates="user",
         cascade="all, delete-orphan",
     )

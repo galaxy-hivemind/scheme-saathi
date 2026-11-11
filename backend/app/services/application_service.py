@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.user_profile import UserProfile
 from app.models.beneficiary_profile import BeneficiaryProfile
 from app.models.application_draft import ApplicationDraft
+from app.models.application_status_history import ApplicationStatusHistory
 from app.models.scheme import Scheme
 from app.schemas.application import (
     ApplicationDraftCreate,
@@ -22,7 +23,7 @@ from app.schemas.application import (
     ApplicationDraftSubmitRequest,
     ApplicationDraftResponse,
 )
-from app.services import scheme_service, beneficiary_service, document_service, eligibility_service
+from app.services import scheme_service, beneficiary_service, document_service, eligibility_service, notification_service
 
 logger = logging.getLogger(__name__)
 
@@ -321,6 +322,32 @@ def submit_external_application(
 
     if submit_data.notes:
         draft.notes = submit_data.notes.strip()
+
+    # Append initial immutable SUBMITTED status history event
+    history_entry = ApplicationStatusHistory(
+        application_id=draft.id,
+        status="SUBMITTED",
+        source_type="user_reported",
+        source_reference=ref_num,
+        notes=submit_data.notes.strip() if submit_data.notes else "Citizen recorded external portal submission.",
+        created_at=draft.submitted_at,
+    )
+    db.add(history_entry)
+
+    # Trigger submission notification
+    scheme = scheme_service.get_scheme_by_id(db, draft.scheme_id)
+    scheme_name = getattr(scheme, "name", None) or getattr(scheme, "name_en", None) or "Scheme"
+    notification_service.create_notification(
+        db=db,
+        user_id=current_user.id,
+        title=f"Application Submitted: {scheme_name}",
+        message=f"Application successfully submitted with reference number {ref_num}.",
+        notification_type="status_update",
+        priority="NORMAL",
+        application_id=draft.id,
+        channels=["in_app"],
+        commit=False,
+    )
 
     db.commit()
     db.refresh(draft)

@@ -55,6 +55,7 @@ def test_tool_allowlist_structure():
         "evaluate_all_schemes",
         "get_document_checklist",
         "generate_application_draft",
+        "track_application_status",
         "propose_create_beneficiary",
         "propose_update_beneficiary",
         "propose_update_user_profile",
@@ -309,6 +310,34 @@ def test_generate_application_draft_tool(mock_create_draft, mock_db, mock_user):
         scheme_id=scheme_id,
         beneficiary_id=None,
         notes="Prepared via chat",
+    )
+
+
+@patch("app.services.tracking_service.get_application_status_summary")
+def test_track_application_status_tool(mock_get_summary, mock_db, mock_user):
+    """Test execute_tool dispatches track_application_status properly."""
+    conv_id = uuid.uuid4()
+    app_id = uuid.uuid4()
+    mock_get_summary.return_value = {
+        "found": True,
+        "application_id": str(app_id),
+        "scheme_name": "PM Kisan",
+        "current_status": "SUBMITTED",
+        "external_reference_number": "PMK-999",
+    }
+
+    args = {"application_id": str(app_id), "external_reference_number": "PMK-999"}
+    result = execute_tool(mock_db, mock_user, conv_id, "track_application_status", args)
+
+    assert result.success is True
+    assert result.data["found"] is True
+    assert result.data["current_status"] == "SUBMITTED"
+    mock_get_summary.assert_called_once_with(
+        db=mock_db,
+        current_user=mock_user,
+        application_id=app_id,
+        external_reference_number="PMK-999",
+        scheme_id=None,
     )
 
 

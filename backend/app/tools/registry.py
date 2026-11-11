@@ -13,7 +13,7 @@ from app.models.user import User
 from app.models.chat import ChatConversation, PendingAction
 from app.schemas.beneficiary import BeneficiaryCreate, BeneficiaryUpdate
 from app.schemas.profile import UserProfileUpdate
-from app.services import scheme_service, beneficiary_service, eligibility_service, document_service, application_service
+from app.services import scheme_service, beneficiary_service, eligibility_service, document_service, application_service, tracking_service
 from app.tools.schemas import (
     SearchSchemesInput,
     GetSchemeDetailsInput,
@@ -23,6 +23,7 @@ from app.tools.schemas import (
     EvaluateAllSchemesInput,
     GetDocumentChecklistInput,
     GenerateApplicationDraftInput,
+    TrackApplicationStatusInput,
     ProposeCreateBeneficiaryInput,
     ProposeUpdateBeneficiaryInput,
     ProposeUpdateUserProfileInput,
@@ -40,6 +41,7 @@ READ_ONLY_TOOLS = {
     "evaluate_eligibility",
     "evaluate_all_schemes",
     "get_document_checklist",
+    "track_application_status",
 }
 
 APPLICATION_TOOLS = {
@@ -224,6 +226,23 @@ def generate_application_draft_tool(db: Session, current_user: User, args: Dict[
         return ToolResult(success=True, data=draft.model_dump(mode="json"))
     except Exception as e:
         logger.warning(f"Error executing generate_application_draft: {e}")
+        return ToolResult(success=False, error=str(e))
+
+
+def track_application_status_tool(db: Session, current_user: User, args: Dict[str, Any]) -> ToolResult:
+    """Track the status, timeline, and latest updates for a citizen's application."""
+    try:
+        params = TrackApplicationStatusInput(**args)
+        summary = tracking_service.get_application_status_summary(
+            db=db,
+            current_user=current_user,
+            application_id=params.application_id,
+            external_reference_number=params.external_reference_number,
+            scheme_id=params.scheme_id,
+        )
+        return ToolResult(success=True, data=summary)
+    except Exception as e:
+        logger.warning(f"Error executing track_application_status: {e}")
         return ToolResult(success=False, error=str(e))
 
 
@@ -442,6 +461,8 @@ def execute_tool(
         return get_document_checklist_tool(db, current_user, arguments)
     elif tool_name == "generate_application_draft":
         return generate_application_draft_tool(db, current_user, arguments)
+    elif tool_name == "track_application_status":
+        return track_application_status_tool(db, current_user, arguments)
     elif tool_name == "propose_create_beneficiary":
         return propose_create_beneficiary_tool(db, current_user, conversation_id, arguments)
     elif tool_name == "propose_update_beneficiary":
@@ -599,6 +620,30 @@ def get_gemini_tools_declarations() -> List[Dict[str, Any]]:
                     },
                 },
                 "required": ["scheme_id"],
+            },
+        },
+        {
+            "name": "track_application_status",
+            "description": (
+                "Track the status, progress, reference number, and latest timeline updates of a citizen's welfare scheme application. "
+                "Citizen can query by scheme, application ID, or external government reference number in Hindi or English."
+            ),
+            "parameters": {
+                "type": "OBJECT",
+                "properties": {
+                    "application_id": {
+                        "type": "STRING",
+                        "description": "Optional UUID of the application draft to track",
+                    },
+                    "external_reference_number": {
+                        "type": "STRING",
+                        "description": "Optional official government portal application reference number (e.g. 'PMKISAN-2026-9812')",
+                    },
+                    "scheme_id": {
+                        "type": "STRING",
+                        "description": "Optional UUID of the welfare scheme to check latest application status for",
+                    },
+                },
             },
         },
         {
