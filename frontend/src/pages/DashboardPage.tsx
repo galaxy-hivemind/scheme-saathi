@@ -349,7 +349,27 @@ export const DashboardPage: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2.5 shrink-0">
-                      <Badge variant={app.lifecycle_state}>{app.lifecycle_state.toUpperCase()}</Badge>
+                      {(() => {
+                        const isOfficialSubmitted =
+                          !app.legacy_synthetic_submission &&
+                          app.lifecycle_state === 'submitted' &&
+                          Boolean(app.external_reference_id) &&
+                          !String(app.external_reference_id).toUpperCase().startsWith('SAATHI/') &&
+                          app.submission_source === 'official_integration';
+                        const badgeState = app.legacy_synthetic_submission
+                          ? 'draft'
+                          : app.lifecycle_state === 'submitted' && !isOfficialSubmitted
+                          ? 'draft'
+                          : app.lifecycle_state;
+                        const label = app.legacy_synthetic_submission
+                          ? language === 'hi'
+                            ? 'असत्यापित पैकेट'
+                            : 'UNVERIFIED PACKET'
+                          : badgeState === 'submission_unknown'
+                          ? 'SUBMISSION UNKNOWN'
+                          : badgeState.toUpperCase().replace(/_/g, ' ');
+                        return <Badge variant={badgeState as any}>{label}</Badge>;
+                      })()}
                       <Link to="/applications">
                         <Button variant="outline" size="sm">
                           {language === 'hi' ? 'खोलें' : 'Open'}

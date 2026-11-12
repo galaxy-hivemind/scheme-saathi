@@ -52,6 +52,7 @@ logs/
 # Uploads / user files
 uploads/
 user_documents/
+backend/data/vault_uploads/
 scratch/
 
 # Coverage

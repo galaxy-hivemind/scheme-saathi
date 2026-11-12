@@ -42,11 +42,15 @@ export const Badge: React.FC<BadgeProps> = ({
 
     // Application Lifecycle
     draft: 'bg-ivory-100 text-navy/70 border-navy/15',
-    validated: 'bg-sage-light text-sage-dark border-sage/30',
-    awaiting_confirmation: 'bg-saffron-light text-saffron-dark border-saffron/30 animate-pulse',
+    validated: 'bg-sky-50 text-sky-800 border-sky-200 font-medium',
+    awaiting_confirmation: 'bg-saffron-light text-saffron-dark border-saffron/30',
+    confirmed: 'bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold',
+    submitting: 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse font-semibold',
     submitted: 'bg-sage-light text-sage-dark border-sage/35 font-semibold',
+    portal_submitted: 'bg-teal-50 text-teal-900 border-teal-300 font-semibold',
     validation_failed: 'bg-saffron-light text-saffron-dark border-saffron/20',
-    submission_failed: 'bg-rose-50 text-rose-800 border-rose-200',
+    submission_failed: 'bg-rose-50 text-rose-800 border-rose-200 font-semibold',
+    submission_unknown: 'bg-amber-100 text-amber-900 border-amber-300 font-semibold',
     cancelled: 'bg-ivory-100 text-navy/40 border-navy/10 line-through',
   };
 

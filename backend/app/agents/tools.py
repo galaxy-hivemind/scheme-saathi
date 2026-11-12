@@ -36,34 +36,38 @@ def extract_citizen_entities(message: str) -> Dict[str, Any]:
     in English, Hindi, and Marathi.
     """
     entities: Dict[str, Any] = {}
-    lower = message.lower()
+    
+    # 0. Convert Marathi / Devanagari numerals to standard digits first
+    mr_numerals = {"०": "0", "१": "1", "२": "2", "३": "3", "४": "4", "५": "5", "६": "6", "७": "7", "८": "8", "९": "9"}
+    normalized_message = message
+    for mr_d, ar_d in mr_numerals.items():
+        if mr_d in normalized_message:
+            normalized_message = normalized_message.replace(mr_d, ar_d)
 
-    # 1. Age extraction
-    # e.g., "63-year-old", "63 years old", "age 63", "वय ६३", "उम्र 63", "वय 63 वर्षे"
-    age_match = re.search(r'\b(?:age|aged|वय|उम्र|वय वर्ष|वयवर्षे)?\s*([0-9]{1,2})\s*(?:-| )?(?:year|years|yr|yrs|वर्ष|वर्षे|साल)?\s*(?:old|वय)?\b', message, re.IGNORECASE)
-    # Check specifically for "63-year-old" or "63 year old" or "वय 63"
-    specific_age = re.search(r'\b([0-9]{1,2})\s*[- ]?(?:year[- ]old|years[- ]old|साल की|साल का|वर्षांची|वर्षांचा)\b', message, re.IGNORECASE)
-    if specific_age:
+    lower = normalized_message.lower()
+
+    # 1. Age extraction with strict prefix/suffix boundary to prevent number confusion
+    # Patterns: "63-year-old", "63 years old", "63 yr old", "63 साल", "63 वर्ष", "63 वर्षांची", "उम्र 63", "वय 63"
+    age_suffix = re.search(r'\b([0-9]{1,2})\s*[- ]?(?:year|years|yr|yrs|वर्ष|वर्षे|साल|वर्षांची|वर्षांचा|साल की|साल का)(?:[- ]old)?\b', normalized_message, re.IGNORECASE)
+    age_prefix = re.search(r'\b(?:age|aged|age is|वय|उम्र|वय वर्ष|वयवर्षे)\s*[:=]?\s*([0-9]{1,2})\b', normalized_message, re.IGNORECASE)
+
+    if age_suffix:
         try:
-            val = int(specific_age.group(1))
+            val = int(age_suffix.group(1))
             if 1 <= val <= 115:
                 entities["age"] = val
         except ValueError:
             pass
-    elif age_match and age_match.group(1):
+    elif age_prefix:
         try:
-            val = int(age_match.group(1))
-            if 15 <= val <= 100:
+            val = int(age_prefix.group(1))
+            if 1 <= val <= 115:
                 entities["age"] = val
         except ValueError:
             pass
 
-    # Marathi numerals mapping if present
-    mr_numerals = {"०": "0", "१": "1", "२": "2", "३": "3", "४": "4", "५": "5", "६": "6", "७": "7", "८": "8", "९": "9"}
-    for mr_d, ar_d in mr_numerals.items():
-        if mr_d in lower:
-            for k, v in mr_numerals.items():
-                lower = lower.replace(k, v)
+    if entities.get("age") and entities["age"] >= 60:
+        entities["is_senior_citizen"] = True
 
     # 2. Marital Status & Gender
     if any(k in lower for k in ["widow", "widowed", "विधवा", "गंगाभागीरथी"]):
@@ -83,32 +87,58 @@ def extract_citizen_entities(message: str) -> Dict[str, Any]:
         elif any(k in lower for k in ["man", "male", "boy", "पुरुष", "मुलगा", "गृहस्थ"]):
             entities["gender"] = "MALE"
 
-    # 3. State & District
-    states_map = {
-        "uttar pradesh": "Uttar Pradesh",
-        "up": "Uttar Pradesh",
-        "उत्तर प्रदेश": "Uttar Pradesh",
-        "यूपी": "Uttar Pradesh",
-        "maharashtra": "Maharashtra",
-        "महाराष्ट्र": "Maharashtra",
-        "mh": "Maharashtra",
-        "bihar": "Bihar",
-        "बिहार": "Bihar",
-        "rajasthan": "Rajasthan",
-        "राजस्थान": "Rajasthan",
-        "madhya pradesh": "Madhya Pradesh",
-        "mp": "Madhya Pradesh",
-        "मध्य प्रदेश": "Madhya Pradesh",
-        "gujarat": "Gujarat",
-        "गुजरात": "Gujarat",
-        "karnataka": "Karnataka",
-        "कर्नाटक": "Karnataka",
-        "delhi": "Delhi",
-        "दिल्ली": "Delhi",
-    }
-    for alias, std_name in states_map.items():
-        if re.search(r'\b' + re.escape(alias) + r'\b', lower):
-            entities["state"] = std_name
+    # Maternity / Pregnancy indicators
+    if any(k in lower for k in ["pregnant", "pregnancy", "गरोदर", "गर्भवती", "स्तनपान", "lactating", "माता"]):
+        entities["is_pregnant_or_lactating"] = True
+        entities["gender"] = "FEMALE"
+
+    # 3. State & District Extraction
+    states_list = [
+        (["uttar pradesh", "उत्तर प्रदेश", "यूपी", "u.p."], "Uttar Pradesh"),
+        (["maharashtra", "महाराष्ट्र", "mh"], "Maharashtra"),
+        (["madhya pradesh", "मध्य प्रदेश", "mp"], "Madhya Pradesh"),
+        (["rajasthan", "राजस्थान"], "Rajasthan"),
+        (["bihar", "बिहार"], "Bihar"),
+        (["gujarat", "गुजरात"], "Gujarat"),
+        (["karnataka", "कर्नाटक"], "Karnataka"),
+        (["delhi", "दिल्ली"], "Delhi"),
+        (["tamil nadu", "तमिलनाडु"], "Tamil Nadu"),
+        (["west bengal", "पश्चिम बंगाल"], "West Bengal"),
+        (["punjab", "पंजाब"], "Punjab"),
+        (["haryana", "हरियाणा"], "Haryana"),
+        (["andhra pradesh", "आंध्र प्रदेश"], "Andhra Pradesh"),
+        (["telangana", "तेलंगाना"], "Telangana"),
+        (["kerala", "केरल"], "Kerala"),
+        (["odisha", "ओडिशा"], "Odisha"),
+    ]
+
+    # Check for state negations (e.g. "not UP" or "not Maharashtra")
+    negated_states = set()
+    for neg_match in re.finditer(r'\b(?:not|नाही|नहीं)\s+([a-zA-Z\u0900-\u097F\s\.]+)', lower):
+        neg_text = neg_match.group(1)
+        for aliases, std_name in states_list:
+            if any(re.search(r'\b' + re.escape(a) + r'\b', neg_text) for a in aliases):
+                negated_states.add(std_name)
+
+    matched_state = None
+    for aliases, std_name in states_list:
+        if std_name in negated_states:
+            continue
+        for alias in aliases:
+            if alias == "up":
+                if re.search(r'\b(?:in|from|state|at|of|to)\s+up\b', lower) or re.search(r'\bup\s+(?:state|government|pension|citizen)\b', lower) or lower.strip() == "up":
+                    matched_state = std_name
+                    break
+            elif alias in ("mh", "mp"):
+                if re.search(r'\b(?:in|from|state|at|of)\s+' + alias + r'\b', lower) or lower.strip() == alias:
+                    matched_state = std_name
+                    break
+            else:
+                if re.search(r'\b' + re.escape(alias) + r'\b', lower):
+                    matched_state = std_name
+                    break
+        if matched_state:
+            entities["state"] = matched_state
             break
 
     districts = [
@@ -116,34 +146,51 @@ def extract_citizen_entities(message: str) -> Dict[str, Any]:
         "patna", "jaipur", "bhopal", "indore", "thane", "solapur", "amravati", "kolhapur", "satara"
     ]
     for dist in districts:
-        if dist in lower:
+        if re.search(r'\b' + dist + r'\b', lower):
             entities["district"] = dist.title()
             break
 
-    # 4. Income Extraction
-    # ₹60,000, Rs. 60,000, 60,000, 60000, 60 thousand, 60 हजार, साठ हजार, 1.8 lakh, 180000
-    income_match = re.search(r'(?:income|income is|वार्षिक उत्पन्न|वार्षिक आय|आय|उत्पन्न)?\s*(?:₹|rs\.?|inr)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{4,8})\s*(?:per year|annually|वार्षिक|प्रति वर्ष)?', message, re.IGNORECASE)
-    lakh_match = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*(?:lakh|lac|लाख)', lower)
-    thousand_match = re.search(r'([0-9]+)\s*(?:thousand|हजार)', lower)
+    # 4. Income Extraction (Annual & Monthly)
+    # Check for monthly indicators first: e.g. "15000 per month", "दरमहा उत्पन्न 15000", "15000 महिना"
+    monthly_match = re.search(r'(?:monthly|दरमहा|महिना|प्रति माह|per month)\s*(?:income|उत्पन्न|आय)?\s*(?:is|आहे|होती|है)?\s*(?:₹|rs\.?|inr)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{4,6})', normalized_message, re.IGNORECASE)
+    monthly_suffix = re.search(r'(?:₹|rs\.?|inr)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{4,6})\s*(?:per month|महिना|दरमहा|प्रति माह)', normalized_message, re.IGNORECASE)
 
-    if lakh_match:
+    if monthly_match:
         try:
-            entities["annual_income"] = int(float(lakh_match.group(1)) * 100000)
+            m_val = int(monthly_match.group(1).replace(",", ""))
+            entities["annual_income"] = m_val * 12
         except ValueError:
             pass
-    elif thousand_match:
+    elif monthly_suffix:
         try:
-            entities["annual_income"] = int(thousand_match.group(1)) * 1000
+            m_val = int(monthly_suffix.group(1).replace(",", ""))
+            entities["annual_income"] = m_val * 12
         except ValueError:
             pass
-    elif income_match and income_match.group(1):
-        clean_num = income_match.group(1).replace(",", "")
-        try:
-            val = int(clean_num)
-            if 5000 <= val <= 10000000:
-                entities["annual_income"] = val
-        except ValueError:
-            pass
+    else:
+        # Standard annual income
+        lakh_match = re.search(r'([0-9]+(?:\.[0-9]+)?)\s*(?:lakh|lac|लाख)', lower)
+        thousand_match = re.search(r'([0-9]+)\s*(?:thousand|हजार)', lower)
+        income_match = re.search(r'(?:income|income is|वार्षिक उत्पन्न|वार्षिक आय|आय|उत्पन्न)?\s*(?:₹|rs\.?|inr)?\s*([0-9]{1,3}(?:,[0-9]{2,3})+|[0-9]{4,8})\s*(?:per year|annually|वार्षिक|प्रति वर्ष)?', normalized_message, re.IGNORECASE)
+
+        if lakh_match:
+            try:
+                entities["annual_income"] = int(float(lakh_match.group(1)) * 100000)
+            except ValueError:
+                pass
+        elif thousand_match:
+            try:
+                entities["annual_income"] = int(thousand_match.group(1)) * 1000
+            except ValueError:
+                pass
+        elif income_match and income_match.group(1):
+            clean_num = income_match.group(1).replace(",", "")
+            try:
+                val = int(clean_num)
+                if 5000 <= val <= 10000000:
+                    entities["annual_income"] = val
+            except ValueError:
+                pass
 
     # 5. Occupation
     if any(k in lower for k in ["farmer", "peasant", "cultivator", "किसान", "शेतकरी", "कृषक", "शेती"]):
@@ -167,14 +214,14 @@ def extract_citizen_entities(message: str) -> Dict[str, Any]:
         except ValueError:
             pass
 
-    # 7. Caste / Social Category
-    if any(k in lower for k in ["sc", "scheduled caste", "अनुसूचित जाती", "अनुसूचित जाति"]):
+    # 7. Caste / Social Category (Word Boundary enforced to avoid 'st' collision in 'state', 'first', etc.)
+    if re.search(r'\b(?:sc|scheduled caste)\b', lower) or "अनुसूचित जाती" in lower or "अनुसूचित जाति" in lower:
         entities["caste_category"] = "SC"
-    elif any(k in lower for k in ["st", "scheduled tribe", "अनुसूचित जमाती", "अनुसूचित जनजाति"]):
+    elif re.search(r'\b(?:st|scheduled tribe)\b', lower) or "अनुसूचित जमाती" in lower or "अनुसूचित जनजाति" in lower:
         entities["caste_category"] = "ST"
-    elif any(k in lower for k in ["obc", "other backward class", "इतर मागास वर्ग", "अन्य पिछड़ा वर्ग"]):
+    elif re.search(r'\b(?:obc|other backward class)\b', lower) or "इतर मागास वर्ग" in lower or "अन्य पिछड़ा वर्ग" in lower:
         entities["caste_category"] = "OBC"
-    elif any(k in lower for k in ["general", "open", "सामान्य वर्ग", "खुला प्रवर्ग"]):
+    elif re.search(r'\b(?:general category|open category|general)\b', lower) or "सामान्य वर्ग" in lower or "खुला प्रवर्ग" in lower:
         entities["caste_category"] = "General"
 
     # 8. Student Academic Details (e.g. 88%, 88 percent, 88 टक्के)
@@ -184,17 +231,107 @@ def extract_citizen_entities(message: str) -> Dict[str, Any]:
             entities["student_percentage"] = float(marks_match.group(1))
         except ValueError:
             pass
+            pass
+
+    # 8b. Conversational Address / Identity / Bank / Land details (strictly bounded keywords)
+    aadhaar_match = re.search(
+        r"(?:aadhaar|aadhar|आधार)\s*(?:no\.?|number|card|क्रमांक|नंबर)?\s*[:#-]?\s*([2-9][0-9]{3}[\s-]?[0-9]{4}[\s-]?[0-9]{4})\b",
+        normalized_message,
+        re.IGNORECASE,
+    )
+    if aadhaar_match:
+        entities["aadhaar_number"] = re.sub(r"[\s-]+", "", aadhaar_match.group(1))
+
+    phone_match = re.search(
+        r"(?:mobile|phone|contact|मोबाइल|मोबाईल|फोन)\s*(?:no\.?|number|क्रमांक|नंबर)?\s*(?:is|आहे|है)?\s*[:#-]?\s*(?:\+91[\s-]?)?([6-9][0-9]{9})\b",
+        normalized_message,
+        re.IGNORECASE,
+    )
+    if phone_match:
+        entities["phone_number"] = phone_match.group(1)
+
+    ifsc_match = re.search(
+        r"(?:ifsc\s*(?:code)?\s*(?:is|[:=#-])?\s*|\b)([A-Z]{4}0[A-Z0-9]{6})\b",
+        normalized_message,
+    )
+    if ifsc_match and ("ifsc" in lower or re.match(r"^[A-Z]{4}0[A-Z0-9]{6}$", ifsc_match.group(1))):
+        entities["bank_ifsc"] = ifsc_match.group(1).upper()
+
+    bank_match = re.search(
+        r"(?:account|a/c|bank\s*account|खाता|खाते)\s*(?:no\.?|number|क्रमांक|नंबर)?\s*(?:is|आहे|है)?\s*[:#-]?\s*([0-9]{9,18})\b",
+        normalized_message,
+        re.IGNORECASE,
+    )
+    if bank_match:
+        entities["bank_account_number"] = bank_match.group(1)
+
+    khasra_match = re.search(
+        r"(?:khasra|khatauni|gat|survey)\s*(?:khatauni\s*)?(?:no\.?|number)?\s*(?:is|आहे|है|[:=#-])?\s*([A-Za-z0-9][A-Za-z0-9/\-]{1,19})\b",
+        normalized_message,
+        re.IGNORECASE,
+    )
+    if khasra_match and khasra_match.group(1).lower() not in ("is", "no", "number"):
+        entities["khasra_number"] = khasra_match.group(1)
+
+    subdist_match = re.search(
+        r"(?:tehsil|taluka|sub[- ]?district|block|तहसील|तालुका)\s*(?:is|आहे|है|[:=-])?\s*([A-Za-z][A-Za-z\s-]{1,28}?)(?=,|\.|\band\b|\bstate\b|\bdistrict\b|\bvillage\b|\bkhasra\b|$)",
+        normalized_message,
+        re.IGNORECASE,
+    )
+    if subdist_match:
+        sub_val = re.sub(r"^(?:is|of)\s+", "", subdist_match.group(1).strip(), flags=re.IGNORECASE).strip()
+        if sub_val and sub_val.lower() not in ("not", "name", "number"):
+            entities["sub_district"] = sub_val.title()
+
+    village_match = re.search(
+        r"(?:village|gram)\s*(?:name|is|[:=-])?\s*([A-Za-z][A-Za-z\s-]{1,28}?)(?=,|\.|\band\b|\btehsil\b|\btaluka\b|\bblock\b|\bdistrict\b|\bstate\b|\bkhasra\b|$)",
+        normalized_message,
+        re.IGNORECASE,
+    )
+    if village_match:
+        vil_val = re.sub(r"^(?:is|of|name)\s+", "", village_match.group(1).strip(), flags=re.IGNORECASE).strip()
+        if vil_val and vil_val.lower() not in ("not", "area", "resident"):
+            entities["village"] = vil_val.title()
 
     # 9. Document Disclosure Indicators (e.g. "I don't have income certificate", "माझ्याकडे उत्पन्न प्रमाणपत्र नाही")
-    if any(k in lower for k in ["don't have", "do not have", "नाही", "नहीं है", "उपलब्ध नाही", "नसल्यास"]):
-        if any(k in lower for k in ["income", "उत्पन्न", "आय"]):
+    missing_doc_cues = [
+        "don't have", "do not have", "don’t have", "havent got", "haven't got", "haven't",
+        "not have", "missing", "without", "lost my", "lost the", "unavailable",
+        "नाही", "नाहीये", "नसल्यास", "उपलब्ध नाही", "हरवले", "गहाळ",
+        "नहीं है", "नही है", "नहीं मिल", "गुम हो", "उपलब्ध नहीं",
+    ]
+    if any(k in lower for k in missing_doc_cues):
+        if any(k in lower for k in ["land possession", "possession certificate", "allotment", "homestead"]):
+            entities["missing_document_disclosed"] = "land_possession"
+        elif any(k in lower for k in ["land", "7/12", "उतारा", "khasra", "खसरा", "khatauni", "जमीन", "शेतजमीन", "भूमि"]):
+            entities["missing_document_disclosed"] = "land_records"
+        elif any(k in lower for k in ["income", "उत्पन्न", "आय"]):
             entities["missing_document_disclosed"] = "income_certificate"
-        elif any(k in lower for k in ["death", "मृत्यू", "मरण"]):
+        elif any(k in lower for k in ["death", "मृत्यू", "मरण", "मृत्यु"]):
             entities["missing_document_disclosed"] = "death_certificate"
         elif any(k in lower for k in ["aadhaar", "aadhar", "आधार"]):
             entities["missing_document_disclosed"] = "aadhaar_card"
-        elif any(k in lower for k in ["land", "7/12", "उतारा", "khasra", "खसरा"]):
-            entities["missing_document_disclosed"] = "land_records"
+        elif any(k in lower for k in ["bank", "passbook", "खाता", "पासबुक", "बैंक", "बँक"]):
+            entities["missing_document_disclosed"] = "bank_passbook"
+        elif any(k in lower for k in ["ration", "राशन", "रेशन"]):
+            entities["missing_document_disclosed"] = "ration_card"
+        elif any(k in lower for k in ["job card", "mgnrega", "मनरेगा", "जॉब कार्ड"]):
+            entities["missing_document_disclosed"] = "job_card"
+        elif any(k in lower for k in ["caste", "जाती", "जात", "जाति"]):
+            entities["missing_document_disclosed"] = "caste_certificate"
+        elif any(k in lower for k in ["domicile", "residence", "अधिवास", "निवास", "रहिवासी"]):
+            entities["missing_document_disclosed"] = "domicile_certificate"
+        elif any(k in lower for k in ["marksheet", "12th", "marks", "गुणपत्रक", "मार्कशीट"]):
+            entities["missing_document_disclosed"] = "marksheet_12th"
+        elif any(k in lower for k in ["mcp", "mother and child", "माता बाल"]):
+            entities["missing_document_disclosed"] = "mcp_card"
+        elif any(k in lower for k in ["vending", "lor", "फेरीवाला", "स्टेट वेंडर"]):
+            entities["missing_document_disclosed"] = "vending_certificate"
+        else:
+            from app.services.document_guidance_service import identify_document_key
+            inferred_doc = identify_document_key(lower)
+            if inferred_doc:
+                entities["missing_document_disclosed"] = inferred_doc
 
     return entities
 
@@ -203,46 +340,71 @@ def apply_extracted_entities_to_profile(
     db: Session,
     profile: UserProfile,
     entities: Dict[str, Any],
+    *,
+    force_update: bool = False,
 ) -> None:
-    """Persists extracted entities into the citizen's UserProfile record safely."""
+    """
+    Persists extracted entities into empty citizen UserProfile attributes safely.
+    Never overwrites existing settled profile attributes unless force_update=True (explicit correction),
+    allowing the conflict detector to catch mismatched inputs cleanly.
+    """
     if not profile or not entities:
         return
 
     profile_data = dict(profile.profile_data or {})
     changed = False
 
-    if "age" in entities and (not profile.age or profile.age != entities["age"]):
+    if "age" in entities and (profile.age is None or (force_update and profile.age != entities["age"])):
         profile.age = entities["age"]
         changed = True
 
-    if "gender" in entities and (not profile.gender or profile.gender != entities["gender"]):
+    if "gender" in entities and (not profile.gender or (force_update and profile.gender != entities["gender"])):
         profile.gender = entities["gender"]
         changed = True
 
-    if "state" in entities and (not profile.state or profile.state != entities["state"]):
+    if "state" in entities and (not profile.state or (force_update and profile.state != entities["state"])):
         profile.state = entities["state"]
         changed = True
 
-    if "district" in entities and (not profile.district or profile.district != entities["district"]):
+    if "district" in entities and (not profile.district or (force_update and profile.district != entities["district"])):
         profile.district = entities["district"]
         changed = True
 
-    if "annual_income" in entities and (not profile.annual_income or profile.annual_income != entities["annual_income"]):
+    if "annual_income" in entities and (profile.annual_income is None or (force_update and profile.annual_income != entities["annual_income"])):
         profile.annual_income = entities["annual_income"]
         changed = True
 
-    if "occupation" in entities and (not profile.occupation or profile.occupation != entities["occupation"]):
+    if "occupation" in entities and (not profile.occupation or (force_update and profile.occupation != entities["occupation"])):
         profile.occupation = entities["occupation"]
         changed = True
 
-    # Persist additional attributes into profile_data
-    for key in ["marital_status", "land_holding_acres", "caste_category", "is_landholding_farmer", "is_street_vendor", "is_student", "student_percentage"]:
-        if key in entities:
+    # Persist additional attributes into profile_data only if empty or explicit correction
+    for key in [
+        "marital_status",
+        "land_holding_acres",
+        "caste_category",
+        "is_landholding_farmer",
+        "is_street_vendor",
+        "is_student",
+        "student_percentage",
+        "is_pregnant_or_lactating",
+        "is_senior_citizen",
+        "sub_district",
+        "village",
+        "khasra_number",
+        "aadhaar_number",
+        "phone_number",
+        "bank_account_number",
+        "bank_ifsc",
+    ]:
+        if key in entities and (force_update or profile_data.get(key) in (None, "")):
             profile_data[key] = entities[key]
             changed = True
 
     if changed and db is not None:
+        from sqlalchemy.orm.attributes import flag_modified
         profile.profile_data = profile_data
+        flag_modified(profile, "profile_data")
         db.add(profile)
         db.commit()
         db.refresh(profile)
@@ -375,18 +537,18 @@ def tool_check_eligibility(
             "official_portal": db_scheme.application_url or db_scheme.official_url or "https://india.gov.in",
         }
 
-    # Execute deterministic eligibility engine
-    eval_result = evaluate_scheme_eligibility(db_scheme, profile)
+    # Execute deterministic eligibility engine (merging conversational overrides safely)
+    eval_result = evaluate_scheme_eligibility(db_scheme, profile, override_data=extracted_data)
 
-    satisfied = [c.description for c in eval_result.matched_criteria]
-    unmet = [c.description for c in eval_result.unmatched_criteria]
-    missing = [c.description for c in eval_result.missing_information]
+    satisfied = [c.explanation for c in eval_result.matched_conditions]
+    unmet = [c.explanation for c in eval_result.failed_conditions]
+    missing = [c.explanation for c in eval_result.unknown_conditions] or list(eval_result.missing_fields)
 
     return {
         "scheme_code": db_scheme.scheme_code,
         "scheme_name": db_scheme.name,
         "status": eval_result.result.value,
-        "summary": eval_result.reason_summary,
+        "summary": eval_result.explanation,
         "satisfied_criteria": satisfied,
         "unmet_criteria": unmet,
         "missing_information": missing,
@@ -402,12 +564,14 @@ def tool_build_checklist(
     user: Optional[User],
     profile: Optional[UserProfile],
     scheme_code_or_name: str,
+    lang: str = "en",
 ) -> Dict[str, Any]:
     """
     Builds an authoritative document checklist:
     - Compares required documents against Citizen Vault.
     - Categorizes into: verified, uploaded, extracted, pending_review, missing.
     - Enriches missing documents with verified sourcing information (where to obtain, authority, fee, SLA).
+    - Localizes document titles and sourcing information cleanly for 'en', 'hi', and 'mr'.
     """
     cleaned = scheme_code_or_name.strip().upper()
     resolved_code = SCHEME_CODE_ALIASES.get(cleaned, cleaned)
@@ -459,40 +623,54 @@ def tool_build_checklist(
             {"type": "mcp_card", "title": "Mother and Child Protection (MCP) Card with ANC records", "mandatory": True},
             {"type": "bank_passbook", "title": "Mother's Aadhaar Seeded Bank Account Passbook", "mandatory": True},
         ]
-    else:
-        # Fetch from PostgreSQL SchemeDocument
-        if db is not None:
-            db_scheme = db.scalars(select(Scheme).where(Scheme.scheme_code == resolved_code)).first()
-            if db_scheme:
-                db_docs = db.query(SchemeDocument).filter(
-                    SchemeDocument.scheme_id == db_scheme.id,
-                    SchemeDocument.is_active == True,
-                ).all()
-                for d in db_docs:
-                    required_docs.append({
-                        "type": d.document_type,
-                        "title": d.title or d.document_type.replace("_", " ").title(),
-                        "mandatory": d.is_mandatory,
-                    })
-
-    # Default fallback documents if none found
-    if not required_docs:
+    elif resolved_code == "MLBY-MH":
         required_docs = [
             {"type": "aadhaar_card", "title": "Aadhaar Card", "mandatory": True},
-            {"type": "bank_passbook", "title": "Bank Passbook", "mandatory": True},
-            {"type": "income_certificate", "title": "Income Certificate", "mandatory": False},
+            {"type": "domicile_certificate", "title": "Maharashtra Domicile Certificate / 15-Year Old Ration Card", "mandatory": True},
+            {"type": "income_certificate", "title": "Income Certificate (≤ ₹2.5 Lakh) / Yellow or Orange Ration Card", "mandatory": True},
+            {"type": "bank_passbook", "title": "Aadhaar-Seeded Individual Bank Passbook", "mandatory": True},
         ]
+    elif resolved_code == "AB-PMJAY":
+        required_docs = [
+            {"type": "aadhaar_card", "title": "Aadhaar Card (Mandatory for e-KYC)", "mandatory": True},
+            {"type": "ration_card", "title": "Ration Card or Family Identity Proof", "mandatory": False},
+        ]
+    else:
+        # Fetch authoritative documents for this specific scheme from DB or seed JSON
+        from app.services.readiness_service import get_authoritative_scheme_documents
+        auth_docs = get_authoritative_scheme_documents(resolved_code, None, db)
+        for d in auth_docs:
+            required_docs.append({
+                "type": d["document_type"],
+                "title": d.get("title") or d["document_type"].replace("_", " ").title(),
+                "mandatory": bool(d.get("is_mandatory", True)),
+            })
 
-    # Fetch User's Document Vault
-    vault_docs: List[Dict[str, Any]] = []
+    # Fetch User's Document Vault and normalize status (never auto-verify unreviewed uploads)
+    from app.services.document_service import (
+        DOC_STATE_VERIFIED,
+        doc_types_match,
+        normalize_vault_document,
+    )
+    raw_vault_docs: List[Dict[str, Any]] = []
     if profile and profile.profile_data:
-        vault_docs = profile.profile_data.get("documents", [])
+        raw_vault_docs = profile.profile_data.get("documents", [])
 
-    vault_doc_types = {d.get("document_type"): d for d in vault_docs}
+    vault_docs = [normalize_vault_document(d) for d in raw_vault_docs]
+
+    priority_rank = {
+        "verified": 5,
+        "reviewed": 4,
+        "extracted": 3,
+        "awaiting_citizen_review": 3,
+        "uploaded": 2,
+        "rejected": 1,
+    }
 
     checklist_items: List[Dict[str, Any]] = []
     mandatory_total = 0
     mandatory_ready = 0
+    mandatory_present = 0
 
     for doc in required_docs:
         doc_type = doc["type"]
@@ -500,24 +678,31 @@ def tool_build_checklist(
         if is_mand:
             mandatory_total += 1
 
-        # Check vault
-        matched_vault_doc = vault_doc_types.get(doc_type)
+        matches = [d for d in vault_docs if doc_types_match(doc_type, d.get("document_type", ""))]
+        matches.sort(key=lambda d: priority_rank.get(d.get("lifecycle_status", ""), 0), reverse=True)
+        matched_vault_doc = matches[0] if matches else None
+
         if matched_vault_doc:
-            v_status = matched_vault_doc.get("verification_status", "uploaded")
-            status = v_status  # 'verified', 'uploaded', 'extracted', 'pending_review'
+            status = matched_vault_doc.get("lifecycle_status", "awaiting_citizen_review")
             if is_mand:
-                mandatory_ready += 1
+                if status != "rejected":
+                    mandatory_present += 1
+                if status == DOC_STATE_VERIFIED:
+                    mandatory_ready += 1
         else:
             status = "missing"
 
-        sourcing = get_document_sourcing_info(doc_type)
+        sourcing = get_document_sourcing_info(doc_type, lang=lang)
+        item_title = sourcing.get("title") or doc["title"]
 
         checklist_items.append({
+            "index": len(checklist_items) + 1,
             "document_type": doc_type,
-            "title": doc["title"],
+            "title": item_title,
             "is_mandatory": is_mand,
             "status": status,
             "sourcing": sourcing,
+            "vault_document_id": matched_vault_doc.get("id") if matched_vault_doc else None,
         })
 
     readiness_percentage = round((mandatory_ready / mandatory_total * 100), 1) if mandatory_total > 0 else 100.0
@@ -527,6 +712,7 @@ def tool_build_checklist(
         "total_documents": len(checklist_items),
         "mandatory_count": mandatory_total,
         "mandatory_ready": mandatory_ready,
+        "mandatory_present": mandatory_present,
         "readiness_percentage": readiness_percentage,
         "is_ready_for_application": (mandatory_ready == mandatory_total),
         "items": checklist_items,
@@ -541,144 +727,209 @@ def tool_fill_form(
     profile: Optional[UserProfile],
     scheme_code_or_name: str,
     form_overrides: Optional[Dict[str, Any]] = None,
+    conversation_entities: Optional[Dict[str, Any]] = None,
+    lang: str = "en",
 ) -> Dict[str, Any]:
     """
-    Pre-fills a scheme-specific application form schema using profile data.
-    - Accurately maps citizen profile fields to form fields.
-    - Leaves unknown mandatory fields as unanswered.
-    - Saves editable draft to citizen's profile_data['applications'].
+    Pre-fills a scheme-specific application form schema using the shared
+    Universal Multi-Scheme Pre-Fill Engine.
+    - Combines citizen profile, verified/confirmed Vault documents, conversation entities,
+      and saved draft answers with strict provenance & conflict detection.
+    - Returns explicit schema_available=False for schemes without verified schemas.
+    - Saves editable draft safely to citizen's profile_data['applications'].
     """
+    from app.services.prefill_service import run_universal_prefill, is_empty_value
+    from app.agents.form_schemas import get_unavailable_schema_payload
+    from app.api.v1.applications import canonical_scheme_key, resolve_scheme_info
+
+    from app.services.portal_registry_service import get_portal_integration_entry
+    from app.services.submission_service import (
+        build_normalized_application_record,
+        sync_application_record_to_db,
+    )
+
     form_overrides = form_overrides or {}
-    schema = get_form_schema_for_scheme(scheme_code_or_name)
+    conversation_entities = conversation_entities or {}
 
-    if not schema or not schema.get("form_supported"):
-        return {
-            "form_supported": False,
-            "scheme_code": scheme_code_or_name,
-            "message": f"Online application form for '{scheme_code_or_name}' is submitted directly on the official department portal.",
-            "official_portal": "https://india.gov.in",
-        }
+    existing_match: Optional[Dict[str, Any]] = None
+    target_canon = canonical_scheme_key(scheme_code_or_name)
+    if profile and profile.profile_data:
+        apps = list(profile.profile_data.get("applications", []))
+        existing_match = next(
+            (
+                a
+                for a in apps
+                if a.get("lifecycle_state") not in ("submitted", "portal_submitted", "submitting", "submission_unknown")
+                and not a.get("legacy_synthetic_submission")
+                and not str(a.get("reference_number") or "").upper().startswith("SAATHI/")
+                and canonical_scheme_key(a.get("scheme_code") or a.get("scheme_id") or "", a.get("scheme_name") or "") == target_canon
+            ),
+            None,
+        )
 
-    # Extract available values from User and UserProfile
-    profile_data = dict(profile.profile_data or {}) if profile else {}
-    available_data: Dict[str, Any] = {
-        "full_name": profile.full_name if profile else None,
-        "age": profile.age if profile else None,
-        "gender": profile.gender if profile else None,
-        "state": profile.state if profile else None,
-        "district": profile.district if profile else None,
-        "sub_district": profile.district if profile else None,
-        "annual_income": profile.annual_income if profile else None,
-        "occupation": profile.occupation if profile else None,
-        "aadhaar_number": profile_data.get("aadhaar_number", "XXXXXXXX1234" if profile else None),
-        "phone_number": (user.phone_number if user else None) or profile_data.get("phone_number"),
-        "bank_account_number": profile_data.get("bank_account_number"),
-        "bank_ifsc": profile_data.get("bank_ifsc"),
-        "caste_category": profile_data.get("caste_category"),
-        "land_holding_acres": profile_data.get("land_holding_acres"),
-        "marital_status": profile_data.get("marital_status"),
-    }
+    prefill_res = run_universal_prefill(
+        scheme_code_or_name=scheme_code_or_name,
+        profile=profile,
+        user=user,
+        db=db,
+        existing_draft=existing_match,
+        form_overrides=form_overrides,
+        conversation_entities=conversation_entities,
+        lang=lang,
+    )
 
-    # Apply overrides
-    available_data.update(form_overrides)
+    if not prefill_res.get("form_supported"):
+        # Enrich unavailable schema notice with real DB scheme portal URL when available
+        portal_url = prefill_res.get("official_portal") or "https://india.gov.in"
+        scheme_name = scheme_code_or_name
+        canon_code = target_canon or scheme_code_or_name
+        if db is not None:
+            try:
+                _, db_code, db_name, db_portal = resolve_scheme_info(scheme_code_or_name, db)
+                canon_code = db_code
+                scheme_name = db_name
+                portal_url = db_portal
+            except Exception:
+                pass
+        else:
+            # Check local seed fallback so APY and other seeded schemes keep authoritative portals in unit tests
+            from pathlib import Path
+            import json
+            seed_dir = Path(__file__).resolve().parent.parent.parent / "data" / "schemes"
+            for fp in seed_dir.glob("*.json"):
+                try:
+                    data = json.loads(fp.read_text(encoding="utf-8"))
+                    if (data.get("scheme_code") or "").upper() == target_canon or (data.get("name") or "").upper() == scheme_code_or_name.strip().upper():
+                        canon_code = data.get("scheme_code") or canon_code
+                        scheme_name = data.get("name") or scheme_name
+                        portal_url = data.get("application_url") or data.get("official_url") or portal_url
+                        break
+                except Exception:
+                    continue
 
-    prefilled_sections: List[Dict[str, Any]] = []
-    total_mandatory_fields = 0
-    filled_mandatory_fields = 0
-    form_values: Dict[str, Any] = {}
+        unavail = get_unavailable_schema_payload(canon_code, scheme_name, portal_url, lang=lang)
+        portal_entry = get_portal_integration_entry(canon_code, db=db, lang=lang)
+        unavail["portal_integration"] = portal_entry
+        unavail["official_portal"] = portal_entry.get("official_application_url") or portal_url
+        return unavail
 
-    for sec in schema.get("sections", []):
-        section_fields = []
-        for f in sec.get("fields", []):
-            field_name = f["name"]
-            is_req = f.get("required", False)
-            prof_field = f.get("profile_field")
-            default_val = f.get("default")
+    target_code = prefill_res["scheme_code"]
+    portal_entry = get_portal_integration_entry(target_code, db=db, lang=lang)
+    eff_portal_url = portal_entry.get("official_application_url") or prefill_res.get("official_portal") or "https://india.gov.in"
+    form_values = dict(prefill_res["values"])
+    total_mandatory_fields = prefill_res["total_mandatory_fields"]
+    filled_mandatory_fields = prefill_res["filled_mandatory_fields"]
+    readiness = prefill_res["readiness_percentage"]
 
-            if is_req:
-                total_mandatory_fields += 1
-
-            # Determine value
-            val = form_overrides.get(field_name)
-            if val is None and prof_field:
-                val = available_data.get(prof_field)
-            if val is None:
-                val = default_val
-
-            is_filled = val is not None and str(val).strip() != ""
-            if is_req and is_filled:
-                filled_mandatory_fields += 1
-
-            form_values[field_name] = val
-
-            section_fields.append({
-                "name": field_name,
-                "label": f["label"],
-                "type": f["type"],
-                "required": is_req,
-                "value": val,
-                "is_prefilled": is_filled,
-                "placeholder": f.get("placeholder", ""),
-                "options": f.get("options"),
-            })
-
-        prefilled_sections.append({
-            "section_id": sec["section_id"],
-            "title": sec["title"],
-            "fields": section_fields,
-        })
-
-    readiness = round((filled_mandatory_fields / total_mandatory_fields * 100), 1) if total_mandatory_fields > 0 else 100.0
-
-    # Save draft into user's profile applications
-    app_id = f"app-{schema['scheme_code'].lower()}-{uuid.uuid4().hex[:6]}"
+    app_id = (existing_match.get("id") if existing_match else None) or f"app-{target_code.lower()}-{uuid.uuid4().hex[:6]}"
     now_iso = datetime.now(timezone.utc).isoformat()
+    persisted_form_data = {k: ("" if is_empty_value(v) else v) for k, v in form_values.items()}
 
-    draft_record = {
+    draft_record: Dict[str, Any] = {
         "id": app_id,
-        "scheme_code": schema["scheme_code"],
-        "scheme_name": schema["title"],
-        "official_portal": schema.get("official_portal"),
-        "lifecycle_state": "draft_saved",
-        "form_data": form_values,
+        "user_id": str(user.id) if user and hasattr(user, "id") and user.id else (str(profile.user_id) if profile and hasattr(profile, "user_id") else "citizen"),
+        "scheme_id": target_code,
+        "scheme_code": target_code,
+        "scheme_name": prefill_res["scheme_title"],
+        "official_url": eff_portal_url,
+        "official_portal": eff_portal_url,
+        "portal_url": eff_portal_url,
+        "tracking_url": portal_entry.get("tracking_url"),
+        "submission_method": portal_entry.get("submission_method"),
+        "portal_integration": portal_entry,
+        "schema_available": True,
+        "lifecycle_state": "draft",
+        "form_data": persisted_form_data,
+        "resolved_conflicts": prefill_res.get("resolved_conflicts") or {},
+        "prefill_summary": prefill_res,
         "readiness_percentage": readiness,
         "total_mandatory_fields": total_mandatory_fields,
         "filled_mandatory_fields": filled_mandatory_fields,
-        "created_at": now_iso,
+        "validation_result": {
+            "passed": bool(prefill_res.get("can_confirm")),
+            "errors": (
+                [{"field": c["field"], "message": c["message"]} for c in (prefill_res.get("conflicting_fields") or [])]
+                + list(prefill_res.get("invalid_fields") or [])
+                + (
+                    []
+                    if filled_mandatory_fields == total_mandatory_fields
+                    else [{"field": "mandatory_fields", "message": f"{total_mandatory_fields - filled_mandatory_fields} mandatory fields require input."}]
+                )
+            ),
+            "warnings": [],
+        },
+        "created_at": (existing_match.get("created_at") if existing_match else None) or now_iso,
         "updated_at": now_iso,
-        "audit_trail": [
+        "audit_trail": list((existing_match or {}).get("audit_trail") or []) + [
             {
                 "timestamp": now_iso,
-                "action": "DRAFT_CREATED",
+                "action": "DRAFT_UPDATED" if existing_match else "DRAFT_CREATED",
                 "actor": "saathi_agent",
-                "details": f"Pre-filled {filled_mandatory_fields}/{total_mandatory_fields} mandatory fields from citizen profile.",
+                "details": f"Pre-filled {filled_mandatory_fields}/{total_mandatory_fields} mandatory fields ({prefill_res['auto_populated_fields']}/{prefill_res['total_fields']} total).",
             }
         ],
     }
 
+    citizen_uid = user.id if user and hasattr(user, "id") and user.id else (profile.user_id if profile and hasattr(profile, "user_id") else None)
     if profile and db is not None:
+        from sqlalchemy.orm.attributes import flag_modified
+        from app.services.readiness_service import evaluate_application_readiness
+
         current_profile_data = dict(profile.profile_data or {})
-        apps = list(current_profile_data.get("applications", []))
-        # Replace if existing draft for same scheme
-        apps = [a for a in apps if a.get("scheme_code") != schema["scheme_code"]]
+        apps = [a for a in current_profile_data.get("applications", []) if a.get("id") != app_id]
+
+        draft_record["validation_result"] = evaluate_application_readiness(
+            scheme_code=target_code,
+            scheme_id=draft_record.get("scheme_id"),
+            form_data=draft_record["form_data"],
+            profile=profile,
+            db=db,
+            lang=lang,
+            resolved_conflicts=draft_record["resolved_conflicts"],
+        )
+        if draft_record["validation_result"]["passed"]:
+            draft_record["lifecycle_state"] = "awaiting_confirmation"
+        draft_record["application_record"] = build_normalized_application_record(
+            draft_record, citizen_uid, portal_entry
+        )
+
         apps.insert(0, draft_record)
         current_profile_data["applications"] = apps
         profile.profile_data = current_profile_data
+        flag_modified(profile, "profile_data")
         db.add(profile)
+        if citizen_uid:
+            sync_application_record_to_db(db, draft_record, citizen_uid, portal_entry)
         db.commit()
         db.refresh(profile)
 
     return {
         "form_supported": True,
+        "schema_available": True,
+        "schema_status": prefill_res["schema_status"],
         "application_id": app_id,
-        "scheme_code": schema["scheme_code"],
-        "scheme_title": schema["title"],
-        "official_portal": schema.get("official_portal"),
-        "readiness_percentage": readiness,
+        "draft_id": app_id,
+        "scheme_code": target_code,
+        "scheme_title": prefill_res["scheme_title"],
+        "official_portal": eff_portal_url,
+        "portal_integration": portal_entry,
+        "application_record": draft_record.get("application_record")
+        or build_normalized_application_record(draft_record, citizen_uid, portal_entry),
+        "total_fields": prefill_res["total_fields"],
         "total_mandatory_fields": total_mandatory_fields,
         "filled_mandatory_fields": filled_mandatory_fields,
-        "sections": prefilled_sections,
+        "auto_populated_fields": prefill_res["auto_populated_fields"],
+        "requires_input_count": prefill_res["requires_input_count"],
+        "requires_input_fields": prefill_res["requires_input_fields"],
+        "conditional_fields": prefill_res["conditional_fields"],
+        "conflicting_fields": prefill_res["conflicting_fields"],
+        "invalid_fields": prefill_res["invalid_fields"],
+        "readiness_percentage": readiness,
+        "prefill_percentage": readiness,
+        "sections": prefill_res["sections"],
         "values": form_values,
+        "form_data": persisted_form_data,
+        "can_confirm": prefill_res["can_confirm"],
     }
 
 
@@ -691,63 +942,306 @@ def tool_submit_form(
     scheme_code_or_name: str,
     confirmed: bool = False,
     form_data: Optional[Dict[str, Any]] = None,
+    lang: str = "en",
+    consent_acknowledged: bool = True,
+    expected_version: Optional[int] = None,
+    expected_hash: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Handles final application submission / official portal handoff:
-    - If confirmed=False: requests explicit citizen confirmation with validation summary.
-    - If confirmed=True: generates official handoff packet reference 'SAATHI/READY/2026/...'
-    - Never fabricates government submission; directs citizen clearly to official portal.
+    Phase 7 Safe Confirmation & Submission Orchestration Tool:
+    - If confirmed=False: compiles complete field-by-field review summary with provenance,
+      version, hash, verified docs, and portal integration disclosure.
+    - If confirmed=True: validates strictly, records version-bound explicit citizen confirmation,
+      and orchestrates submission via submission_service without ever simulating government submission.
     """
+    from app.services.prefill_service import run_universal_prefill
+    from app.services.portal_registry_service import get_portal_integration_entry
+    from app.services.submission_service import (
+        STATE_CONFIRMED,
+        STATE_PORTAL_SUBMITTED,
+        STATE_SUBMISSION_FAILED,
+        STATE_SUBMISSION_UNKNOWN,
+        STATE_SUBMITTED,
+        STATE_SUBMITTING,
+        build_application_review_summary,
+        get_portal_adapter,
+        is_verified_government_submission,
+        orchestrate_application_submission,
+        record_explicit_confirmation,
+        sanitize_legacy_unverified_submission,
+        stamp_application_version_and_check_invalidation,
+    )
+    from sqlalchemy.orm.attributes import flag_modified
+
+    lang = lang if lang in ("en", "hi", "mr") else "en"
     cleaned = scheme_code_or_name.strip().upper()
     resolved_code = SCHEME_CODE_ALIASES.get(cleaned, cleaned)
     schema = get_form_schema_for_scheme(resolved_code)
+    portal_entry = get_portal_integration_entry(resolved_code, db=db, lang=lang)
 
-    portal_url = (schema.get("official_portal") if schema else None) or "https://india.gov.in"
+    portal_url = portal_entry.get("official_application_url") or (schema.get("official_portal") if schema else None) or "https://india.gov.in"
     if resolved_code == "WIDOW-PENSION" and profile and profile.state == "Uttar Pradesh":
         portal_url = "https://sspy-up.gov.in"
 
+    adapter = get_portal_adapter(resolved_code)
+    integration_supported = bool(adapter is not None and adapter.is_authorized)
+
+    effective_user = user
+    if effective_user is None and profile is not None and getattr(profile, "user_id", None):
+        effective_user = User(id=profile.user_id, email="citizen@local")
+
+    # Locate active matching application packet inside citizen profile if present
+    target_app: Optional[Dict[str, Any]] = None
+    current_profile_data: Optional[Dict[str, Any]] = None
+    apps: List[Dict[str, Any]] = []
+    if profile and profile.profile_data:
+        current_profile_data = dict(profile.profile_data or {})
+        apps = list(current_profile_data.get("applications", []))
+        target_app = next(
+            (
+                a for a in apps
+                if (a.get("scheme_code") or "").upper() == resolved_code.upper()
+                and not a.get("legacy_synthetic_submission")
+                and not str(a.get("reference_number") or "").upper().startswith("SAATHI/")
+                and not is_verified_government_submission(a)
+                and a.get("lifecycle_state") not in (STATE_SUBMITTED, STATE_PORTAL_SUBMITTED, STATE_SUBMITTING)
+            ),
+            None,
+        )
+
     if not confirmed:
+        review_summary = None
+        if target_app is not None and profile is not None:
+            if form_data:
+                target_app.setdefault("form_data", {}).update(
+                    {k: ("" if v is None else v) for k, v in form_data.items()}
+                )
+                stamp_application_version_and_check_invalidation(target_app, profile, increment_on_change=True)
+            review_summary = build_application_review_summary(
+                target_app=target_app,
+                profile=profile,
+                current_user=effective_user,
+                db=db,
+                lang=lang,
+            )
+            if db is not None:
+                current_profile_data["applications"] = apps
+                profile.profile_data = current_profile_data
+                flag_modified(profile, "profile_data")
+                db.commit()
+        else:
+            prefill_preview = run_universal_prefill(
+                scheme_code_or_name=resolved_code,
+                profile=profile,
+                user=effective_user,
+                db=db,
+                form_overrides=form_data or {},
+                lang=lang,
+            )
+            review_summary = {
+                "application_id": None,
+                "scheme_code": resolved_code,
+                "scheme_name": prefill_preview.get("scheme_title") or resolved_code,
+                "version": 1,
+                "data_hash": None,
+                "sections": [
+                    {
+                        "section_id": s.get("section_id"),
+                        "title": s.get("title"),
+                        "fields": [
+                            {
+                                "name": f.get("name"),
+                                "label": f.get("label"),
+                                "value": "" if f.get("value") is None else f.get("value"),
+                                "required": bool(f.get("required")),
+                                "source_badge": f.get("source_label") or "",
+                                "source_tier": f.get("source_tier"),
+                            }
+                            for f in s.get("fields", [])
+                        ],
+                    }
+                    for s in (prefill_preview.get("sections") or [])
+                ],
+                "submission": {
+                    "integration_supported": integration_supported,
+                    "integration_mode": "official_integration" if integration_supported else "manual_portal_required",
+                    "manual_submission_required": not integration_supported,
+                    "official_portal_url": portal_url,
+                },
+            }
+
+        review_msg = {
+            "en": "Please review your complete application summary and confirm your explicit authorization.",
+            "hi": "कृपया अपने पूर्ण आवेदन सारांश की समीक्षा करें और अपनी स्पष्ट स्वीकृति दें।",
+            "mr": "कृपया तुमच्या अर्जाचा संपूर्ण सारांश तपासा आणि स्पष्ट संमती द्या.",
+        }[lang]
         return {
             "requires_confirmation": True,
             "scheme_code": resolved_code,
+            "application_id": review_summary.get("application_id"),
+            "version": review_summary.get("version", 1),
+            "data_hash": review_summary.get("data_hash"),
+            "integration_supported": integration_supported,
+            "manual_portal_required": not integration_supported,
+            "submission_method": portal_entry.get("submission_method"),
             "portal_url": portal_url,
-            "message": "Please review and confirm your application details before we generate your official submission packet.",
+            "official_portal_url": portal_url,
+            "tracking_url": portal_entry.get("tracking_url"),
+            "portal_integration": review_summary.get("portal_integration") or portal_entry,
+            "review_summary": review_summary,
+            "message": review_msg,
         }
 
     # Explicit citizen confirmation received
+    if target_app is not None and profile is not None and effective_user is not None:
+        if form_data:
+            target_app.setdefault("form_data", {}).update(
+                {k: ("" if v is None else v) for k, v in form_data.items()}
+            )
+            stamp_application_version_and_check_invalidation(target_app, profile, increment_on_change=True)
+
+        conf_res = record_explicit_confirmation(
+            target_app=target_app,
+            profile=profile,
+            current_user=effective_user,
+            db=db,
+            lang=lang,
+            consent_acknowledged=consent_acknowledged,
+            expected_version=expected_version,
+            expected_hash=expected_hash,
+        )
+        sub_res = orchestrate_application_submission(
+            target_app=target_app,
+            profile=profile,
+            current_user=effective_user,
+            db=db,
+            current_profile_data=current_profile_data,
+            apps_list=apps,
+            lang=lang,
+            idempotency_key=idempotency_key,
+        )
+        return {
+            "requires_confirmation": False,
+            "confirmed": True,
+            "confirmed_at": conf_res["confirmed_at"],
+            "confirmed_version": conf_res["confirmed_version"],
+            "confirmed_hash": conf_res["confirmed_hash"],
+            "application_id": target_app.get("id"),
+            "scheme_code": resolved_code,
+            **sub_res,
+            "official_portal_url": sub_res.get("portal_url") or portal_url,
+        }
+
+    # Stateless / unit-test fallback without persisted profile draft: NEVER simulate external submission!
     now_iso = datetime.now(timezone.utc).isoformat()
-    ref_num = f"SAATHI/READY/2026/{uuid.uuid4().hex[:8].upper()}"
+    if integration_supported and adapter is not None:
+        try:
+            res = adapter.submit(
+                application={"scheme_code": resolved_code, "form_data": form_data or {}},
+                idempotency_key=idempotency_key or f"chat-{uuid.uuid4().hex[:10]}",
+                lang=lang,
+            )
+        except TimeoutError as exc:
+            return {
+                "requires_confirmation": False,
+                "confirmed": True,
+                "submitted": False,
+                "manual_portal_required": False,
+                "integration_supported": True,
+                "lifecycle_state": STATE_SUBMISSION_UNKNOWN,
+                "submission_status": STATE_SUBMISSION_UNKNOWN,
+                "blind_retry_blocked": True,
+                "external_reference_id": None,
+                "official_portal_url": portal_url,
+                "message": str(exc) or "Gateway timed out after request dispatch; outcome is submission_unknown.",
+                "timestamp": now_iso,
+            }
+        except Exception as exc:
+            is_uncertain = bool(getattr(exc, "outcome_uncertain", False))
+            state_out = STATE_SUBMISSION_UNKNOWN if is_uncertain else STATE_SUBMISSION_FAILED
+            return {
+                "requires_confirmation": False,
+                "confirmed": True,
+                "submitted": False,
+                "manual_portal_required": False,
+                "integration_supported": True,
+                "lifecycle_state": state_out,
+                "submission_status": STATE_SUBMISSION_UNKNOWN if is_uncertain else "failed_retryable",
+                "blind_retry_blocked": is_uncertain,
+                "external_reference_id": None,
+                "official_portal_url": portal_url,
+                "message": str(exc) or "External portal submission failed.",
+                "timestamp": now_iso,
+            }
 
-    # Update application record in profile
-    if profile and db is not None:
-        current_profile_data = dict(profile.profile_data or {})
-        apps = list(current_profile_data.get("applications", []))
-        for app in apps:
-            if app.get("scheme_code") == resolved_code:
-                app["lifecycle_state"] = "official_portal_handoff"
-                app["readiness_reference"] = ref_num
-                app["confirmed_at"] = now_iso
-                app["updated_at"] = now_iso
-                audit = app.get("audit_trail", [])
-                audit.append({
-                    "timestamp": now_iso,
-                    "action": "CITIZEN_CONFIRMED_HANDOFF",
-                    "actor": "citizen",
-                    "details": f"Citizen explicitly verified pre-filled packet. Handoff reference {ref_num} issued for {portal_url}.",
-                })
-                app["audit_trail"] = audit
-                break
-        current_profile_data["applications"] = apps
-        profile.profile_data = current_profile_data
-        db.add(profile)
-        db.commit()
-        db.refresh(profile)
+        ext_ref_raw = str(res.external_reference_id).strip() if res.external_reference_id else ""
+        has_real_ref = bool(ext_ref_raw and not ext_ref_raw.upper().startswith("SAATHI/"))
+        if res.outcome == "submitted" and has_real_ref:
+            return {
+                "requires_confirmation": False,
+                "confirmed": True,
+                "submitted": True,
+                "manual_portal_required": False,
+                "integration_supported": True,
+                "lifecycle_state": STATE_SUBMITTED,
+                "submission_status": "submitted",
+                "external_reference_id": ext_ref_raw,
+                "official_portal_url": portal_url,
+                "message": res.message or "Submitted via verified integration.",
+                "timestamp": now_iso,
+            }
+        if res.outcome in ("submitted", "uncertain"):
+            return {
+                "requires_confirmation": False,
+                "confirmed": True,
+                "submitted": False,
+                "manual_portal_required": False,
+                "integration_supported": True,
+                "lifecycle_state": STATE_SUBMISSION_UNKNOWN,
+                "submission_status": STATE_SUBMISSION_UNKNOWN,
+                "blind_retry_blocked": True,
+                "external_reference_id": None,
+                "official_portal_url": portal_url,
+                "message": res.message or "Portal outcome is ambiguous or missing authoritative transaction reference ID.",
+                "timestamp": now_iso,
+            }
+        return {
+            "requires_confirmation": False,
+            "confirmed": True,
+            "submitted": False,
+            "manual_portal_required": False,
+            "integration_supported": True,
+            "lifecycle_state": STATE_SUBMISSION_FAILED,
+            "submission_status": res.outcome,
+            "blind_retry_blocked": res.outcome == "failed_permanent",
+            "external_reference_id": None,
+            "official_portal_url": portal_url,
+            "message": res.message or "Official portal rejected the submission request.",
+            "timestamp": now_iso,
+        }
 
+    manual_msg = {
+        "en": f"Your {resolved_code} application details are confirmed. Manual submission on the official portal ({portal_url}) is required because no direct government API submission integration is enabled.",
+        "hi": f"आपके {resolved_code} आवेदन विवरण की पुष्टि हो गई है। इस योजना के लिए प्रत्यक्ष सरकारी पोर्टल API एकीकरण सक्रिय नहीं है, इसलिए कृपया आधिकारिक पोर्टल ({portal_url}) पर मैन्युअल रूप से आवेदन जमा करें।",
+        "mr": f"तुमच्या {resolved_code} अर्जाची माहिती नक्की झाली आहे. थेट शासकीय पोर्टल API जोडणी सक्रिय नसल्याने कृपया अधिकृत पोर्टलवर ({portal_url}) स्वतः अर्ज सादर करा.",
+    }[lang]
     return {
         "requires_confirmation": False,
-        "submission_status": "ready_for_official_portal",
-        "handoff_reference": ref_num,
+        "confirmed": True,
+        "confirmed_at": now_iso,
+        "confirmed_version": 1,
+        "scheme_code": resolved_code,
+        "lifecycle_state": STATE_CONFIRMED,
+        "submitted": False,
+        "manual_portal_required": True,
+        "integration_supported": False,
+        "submission_method": portal_entry.get("submission_method"),
+        "submission_status": "manual_portal_required",
+        "external_reference_id": None,
         "official_portal_url": portal_url,
-        "message": f"Your application readiness packet has been generated (Ref: {ref_num}). You can now complete the final 1-click submission on the official portal: {portal_url}.",
+        "tracking_url": portal_entry.get("tracking_url"),
+        "portal_integration": portal_entry,
+        "message": manual_msg,
         "timestamp": now_iso,
     }

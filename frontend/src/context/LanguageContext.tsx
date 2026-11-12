@@ -9,19 +9,38 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const LanguageProvider: React.FC<{ children: React.ReactNode; initialLanguage?: Language }> = ({
+  children,
+  initialLanguage,
+}) => {
   const [language, setLanguageState] = useState<Language>(() => {
-    const saved = localStorage.getItem('scheme_saathi_lang') as Language;
-    return saved === 'en' || saved === 'hi' ? saved : 'hi';
+    if (initialLanguage) return initialLanguage;
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = window.localStorage.getItem('scheme_saathi_lang') as Language;
+        return saved === 'en' || saved === 'hi' || saved === 'mr' ? saved : 'hi';
+      }
+    } catch {
+      // In SSR or testing environment without localStorage
+    }
+    return 'hi';
   });
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem('scheme_saathi_lang', lang);
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('scheme_saathi_lang', lang);
+      }
+    } catch {
+      // Ignore
+    }
   };
 
   useEffect(() => {
-    document.documentElement.lang = language;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.lang = language;
+    }
   }, [language]);
 
   return (
@@ -34,7 +53,11 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 export const useLanguage = (): LanguageContextType => {
   const context = useContext(LanguageContext);
   if (!context) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
+    return {
+      language: 'en',
+      setLanguage: () => {},
+      t: translations['en'],
+    };
   }
   return context;
 };

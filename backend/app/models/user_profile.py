@@ -80,3 +80,62 @@ class UserProfile(Base, TimestampMixin):
         "User",
         back_populates="profile",
     )
+
+    @property
+    def age(self) -> Optional[int]:
+        """Calculates citizen age from profile_data or date_of_birth."""
+        if self.profile_data and "age" in self.profile_data and self.profile_data["age"] is not None:
+            try:
+                return int(self.profile_data["age"])
+            except (ValueError, TypeError):
+                pass
+        if self.date_of_birth:
+            today = date.today()
+            return (
+                today.year
+                - self.date_of_birth.year
+                - ((today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day))
+            )
+        return None
+
+    @age.setter
+    def age(self, value: Optional[int]) -> None:
+        if self.profile_data is None:
+            self.profile_data = {}
+        if value is not None:
+            self.profile_data["age"] = int(value)
+            if self.date_of_birth is None:
+                self.date_of_birth = date(date.today().year - int(value), 1, 1)
+        else:
+            self.profile_data.pop("age", None)
+
+    @property
+    def annual_income(self) -> Optional[float]:
+        """Returns citizen annual family income from column or profile_data."""
+        if self.annual_family_income is not None:
+            try:
+                return float(self.annual_family_income)
+            except (ValueError, TypeError):
+                pass
+        if self.profile_data and "annual_income" in self.profile_data:
+            try:
+                return float(self.profile_data["annual_income"])
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    @annual_income.setter
+    def annual_income(self, value: Optional[Any]) -> None:
+        if value is not None:
+            try:
+                dec_val = Decimal(str(value))
+                self.annual_family_income = dec_val
+                if self.profile_data is None:
+                    self.profile_data = {}
+                self.profile_data["annual_income"] = float(dec_val)
+            except Exception:
+                pass
+        else:
+            self.annual_family_income = None
+            if self.profile_data:
+                self.profile_data.pop("annual_income", None)

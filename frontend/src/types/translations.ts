@@ -1,4 +1,4 @@
-export type Language = 'hi' | 'en';
+export type Language = 'en' | 'hi' | 'mr';
 
 export interface Translations {
   appName: string;
@@ -165,6 +165,61 @@ export const translations: Record<Language, Translations> = {
       requiredDocuments: "आवश्यक दस्तावेज़",
       uploadedDocuments: "अपलोड किए गए दस्तावेज़",
       mockModeNotice: "डेमो / मॉक मोड सक्रिय — बैकएंड उपलब्ध होने पर लाइव डेटा लोड होगा",
+    },
+  },
+  mr: {
+    appName: "योजना साथी",
+    appTagline: "भारतीय नागरिकांसाठी AI-सक्षम शासकीय योजना साथीदार",
+    nav: {
+      home: "मुख्यपृष्ठ",
+      schemes: "शासकीय योजना",
+      chat: "साथी सहाय्यक",
+      eligibility: "पात्रता पडताळणी",
+      documents: "कागदपत्रे",
+      applications: "अर्ज स्थिती",
+      dashboard: "डॅशबोर्ड",
+      profile: "प्रोफाईल",
+    },
+    actions: {
+      checkEligibility: "पात्रता तपासा",
+      viewDetails: "योजना तपशील",
+      applyNow: "अर्ज सुरू करा",
+      uploadDocument: "कागदपत्र अपलोड करा",
+      submitApplication: "अर्ज सादर करा",
+      saveDraft: "मसुदा जतन करा",
+      retry: "पुन्हा प्रयत्न करा",
+      cancel: "रद्द करा",
+      confirm: "पुष्टी करा आणि पुढे जा",
+      search: "योजना शोधा...",
+      filter: "श्रेणीनुसार फिल्टर करा",
+      exploreSchemes: "योजना शोधा",
+      startChat: "साथीला विचारा",
+      editProfile: "प्रोफाईल संपादित करा",
+    },
+    status: {
+      eligible: "पात्र (Eligible)",
+      notEligible: "अपात्र (Not Eligible)",
+      potentiallyEligible: "संभाव्य पात्र",
+      insufficientInfo: "अपूर्ण माहिती",
+      draft: "मसुदा (Draft)",
+      validated: "पडताळणी पूर्ण",
+      awaitingConfirmation: "पुष्टी प्रलंबित",
+      submitted: "सादर केला (Submitted)",
+      validationFailed: "पडताळणी अयशस्वी",
+      submissionFailed: "सादर करणे अयशस्वी",
+      cancelled: "रद्द",
+    },
+    labels: {
+      category: "श्रेणी",
+      ministry: "मंत्रालय",
+      benefits: "योजनेचे लाभ",
+      targetBeneficiaries: "पात्र लाभार्थी",
+      officialPortal: "अधिकृत पोर्टल",
+      verifiedOn: "पडताळणी दिनांक",
+      missingDocuments: "आवश्यक शिल्लक कागदपत्रे",
+      requiredDocuments: "आवश्यक कागदपत्रे",
+      uploadedDocuments: "अपलोड केलेली कागदपत्रे",
+      mockModeNotice: "डेमो / मॉक मोड सक्रिय — बॅकएंड उपलब्ध झाल्यावर थेट डेटा लोड होईल",
     },
   },
 };

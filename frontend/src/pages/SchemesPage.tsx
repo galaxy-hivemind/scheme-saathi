@@ -304,22 +304,36 @@ export const SchemesPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-1">
-                  <h3 className="font-bold text-navy text-base leading-snug line-clamp-2 font-editorial group-hover:text-saffron-dark transition-colors">
+                  <Link
+                    to={`/schemes/${scheme.id}`}
+                    className="font-bold text-navy text-base leading-snug line-clamp-2 font-editorial hover:text-saffron-dark transition-colors block"
+                  >
                     {scheme.name}
-                  </h3>
+                  </Link>
                   <p className="text-xs text-navy/60 line-clamp-2 leading-relaxed">
                     {scheme.description}
                   </p>
                 </div>
 
-                <div className="p-3 rounded-xl bg-ivory-100/70 border border-navy/6 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-navy/40 block tracking-wider">
-                    {t.labels.benefits}
-                  </span>
+                <Link
+                  to={`/schemes/${scheme.id}?tab=benefits`}
+                  className="p-3 rounded-xl bg-ivory-100/70 hover:bg-saffron-light/60 border border-navy/6 hover:border-saffron/30 space-y-1 block transition-all duration-200 group/benefits cursor-pointer"
+                  title={language === 'hi' ? 'योजना के लाभ देखने के लिए क्लिक करें' : 'Click to view full scheme benefits'}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-navy/50 group-hover/benefits:text-saffron-dark tracking-wider flex items-center gap-1">
+                      <Coins className="w-3 h-3 text-saffron" />
+                      <span>{t.labels.benefits}</span>
+                    </span>
+                    <span className="text-[10px] font-semibold text-saffron-dark flex items-center gap-0.5 group-hover/benefits:translate-x-0.5 transition-transform">
+                      <span>{language === 'hi' ? 'लाभ विवरण' : 'View Benefits'}</span>
+                      <ArrowRight className="w-2.5 h-2.5" />
+                    </span>
+                  </div>
                   <p className="text-xs font-medium text-navy/80 line-clamp-2 leading-relaxed">
                     {scheme.benefits}
                   </p>
-                </div>
+                </Link>
               </CardContent>
 
               <CardFooter className="p-4 sm:p-5 bg-ivory/50 border-t border-navy/6 flex flex-col gap-2.5">

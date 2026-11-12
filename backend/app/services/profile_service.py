@@ -75,9 +75,11 @@ def update_user_profile(
 
     # Handle nested profile_data merging
     if "profile_data" in update_dict and update_dict["profile_data"] is not None:
+        from sqlalchemy.orm.attributes import flag_modified
         merged_data = dict(profile.profile_data or {})
         merged_data.update(update_dict["profile_data"])
         profile.profile_data = merged_data
+        flag_modified(profile, "profile_data")
         del update_dict["profile_data"]
 
     for field, value in update_dict.items():

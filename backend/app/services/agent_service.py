@@ -29,6 +29,17 @@ from app.schemas.agent import (
 )
 from app.agents.tools import tool_build_checklist, tool_fill_form
 from app.agents.planner import plan_and_execute_agentic_flow
+from app.agents.orchestrator import run_conversational_orchestrator
+from app.services.conversation_memory import load_conversation_state, record_conversation_turn
+from app.agents.form_schemas import (
+    get_document_sourcing_info,
+    DOCUMENT_SOURCING_REGISTRY,
+)
+from app.services.language_registry import (
+    get_localized_ministry,
+    get_localized_category,
+    get_localized_scheme_metadata,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,40 +95,130 @@ def _update_session_scheme(conv_id: str, scheme_code: str, user_id: Optional[str
     session["last_active_at"] = time.time()
 
 
-# ── Language Markers ──────────────────────────────────────────────────────────
+# ── Language Markers & Grammatical Sets ───────────────────────────────────────
 MARATHI_MARKERS = [
-    "मला", "माहिती", "हवी", "शेतकरी", "मिळू", "शकतात", "पात्रता", "आहे", "का",
-    "कागदपत्रे", "लागतील", "महाराष्ट्र", "योजनांबद्दल", "अर्ज", "कसा", "करावा",
-    "लाडकी", "बहीण", "नमो", "शासकीय", "योजनांची", "पाहिजे", "आहात", "काय",
-    "मी", "साठी", "योजनेसाठी", "माझी", "माझ्या", "मिळेल", "नोंदणी", "पैसे",
-    "कुठे", "करावी", "कशी", "हप्ता", "रुपये", "नंतर", "स्थिती",
+    "काय", "आहे", "आहेत", "नाही", "कसा", "कशी", "कसे", "कुठे", "केव्हा", "कधी",
+    "करावा", "करावी", "लागतात", "लागेल", "लागतील", "मिळेल", "मिळतील", "माहिती",
+    "कागदपत्रे", "कागदपत्र", "पात्रता", "अर्ज", "योजना", "साठी", "तिची", "त्यांची",
+    "माझा", "माझी", "मला", "तुम्ही", "शेतकरी", "सांगा", "द्या", "पाहिजे", "होय",
+    "लाडकी", "बहीण", "नमो", "शासकीय", "योजनांची", "हप्ता", "रुपये", "नंतर", "स्थिती",
+    "पडताळणी", "उतारा", "समजावून", "कोणती", "कोणते", "कोणत्या", "योजनेचा", "योजनेची",
 ]
 
 HINDI_MARKERS = [
-    "मुझे", "जानकारी", "चाहिए", "किसान", "मिल", "सकती", "सकते", "पात्र", "हूँ",
-    "दस्तावेज", "लगेंगे", "रहने वाला", "आवेदन", "कैसे", "करें", "बताओ", "योजनाएं",
-    "सरकारी", "फायदा", "लाभ", "क्या", "पंजीकरण", "कहाँ", "रजिस्ट्रेशन", "पैसे",
-    "कितना", "किस्त", "बाद", "स्थिति",
+    "क्या", "है", "हैं", "नहीं", "कैसे", "कैसी", "कहाँ", "कहा", "कब", "करना",
+    "करें", "पड़ेगा", "मिलेगा", "मिलेंगे", "मिलेगी", "जानकारी", "दस्तावेज", "दस्तावेज़",
+    "पात्रता", "आवेदन", "के लिए", "इसकी", "उनका", "उनकी", "मेरा", "मेरी", "मुझे",
+    "आप", "किसान", "बताइए", "बताओ", "समझाएं", "समझाइए", "चाहिए", "योजनाएं", "सरकारी",
+    "फायदा", "लाभ", "पंजीकरण", "रजिस्ट्रेशन", "पैसे", "कितना", "किस्त", "बाद", "स्थिति",
+    "कौन", "कौनसा", "कौनसी", "कौनसे", "सकते", "सकती", "हूँ", "लगेंगे",
 ]
 
 MARATHI_LATIN = [
-    "mala", "aahe", "karaychi", "mahiti", "haviy", "havi", "shetkari", "shethkari",
-    "milu", "shaktat", "shakat", "kagadpatre", "lagtil", "yojanabaddal", "kasa",
-    "nondani", "karava", "paise", "kuthe", "kashi",
+    "sathi", "kay", "ahe", "aahe", "nahi", "aani", "ani", "konte", "konti", "kontya",
+    "lagtat", "lagel", "lagtil", "milel", "miltil", "mahiti", "kagadpatre", "kagadpatri",
+    "patrata", "arj", "yojana", "tichi", "tyanchi", "majha", "majhi", "mala", "tumhi",
+    "shetkari", "shethkari", "sanga", "kasa", "kashi", "kuthe", "kadhi", "pahije",
+    "karaychi", "haviy", "havi", "milu", "shaktat", "shakat", "yojanabaddal", "nondani",
+    "karava", "paise", "utara", "samjavun",
 ]
 
 HINDI_LATIN = [
-    "mujhe", "chahiye", "kisan", "kheti", "batao", "mil", "sakta", "sakti", "sakte",
-    "dastavez", "lagengi", "kaise", "karein", "ke liye", "rahne wala", "apply",
-    "karna", "paisa", "milega", "kaha", "kare",
+    "ke liye", "keliye", "kya", "hai", "hain", "nahi", "aur", "kaunse", "kaunsi", "kaun",
+    "lagte", "lagti", "lagega", "lagengi", "milega", "milegi", "milenge", "jankari",
+    "dastavez", "patrata", "aavedan", "iski", "iska", "mera", "meri", "mujhe", "aap",
+    "kisan", "bataiye", "batao", "samjhao", "samjhaiye", "kaise", "kahan", "kab", "chahiye",
+    "chahie", "karo", "karna", "karein", "kare", "kheti", "paisa", "paise", "fayde",
+    "kitna", "kitne",
 ]
 
 ENGLISH_WORDS = {
-    "tell", "me", "about", "schemes", "scheme", "for", "farmers", "farmer", "in",
-    "india", "am", "i", "eligible", "what", "documents", "are", "required", "how",
-    "can", "apply", "benefit", "benefits", "to", "my", "is", "the", "check", "where",
-    "register", "money", "receive", "status", "after", "registration", "much"
+    "what", "is", "are", "the", "explain", "tell", "me", "about", "for", "farmers",
+    "farmer", "in", "india", "am", "i", "eligible", "eligibility", "documents", "document",
+    "required", "how", "can", "apply", "benefit", "benefits", "to", "my", "check",
+    "where", "register", "registration", "money", "receive", "status", "after", "much",
+    "which", "whose", "criteria", "details", "process", "portal", "need", "scholarship",
+    "scheme", "schemes", "pension", "women", "card", "subsidy", "and", "its", "will",
+    "get", "does", "do",
 }
+
+
+def detect_language_and_style(text: str, user_preference: Optional[str] = "auto") -> Tuple[str, str]:
+    """
+    Detects language ('en', 'hi', 'mr') and communication style ('pure', 'hinglish', 'mr_en')
+    strictly from the citizen's latest query text.
+    Only falls back to user_preference when query text contains no discernible linguistic cues.
+    """
+    if not text or not text.strip():
+        pref = user_preference if user_preference in ("en", "hi", "mr") else "en"
+        return pref, "pure"
+
+    raw_text = text.strip()
+    lower_text = raw_text.lower()
+
+    # Strip scheme acronyms/proper nouns so internal tokens don't distort grammatical detection
+    scrubbed_lower = re.sub(r'pm[\s\-_]kisan', '', lower_text)
+    scrubbed_lower = re.sub(r'ab[\s\-_]pmjay', '', scrubbed_lower)
+    scrubbed_lower = re.sub(r'mlby[\s\-_]mh', '', scrubbed_lower)
+    scrubbed_lower = re.sub(r'nsmsny[\s\-_]mh', '', scrubbed_lower)
+
+    words = set(re.findall(r"\b\w+\b", scrubbed_lower))
+    has_devanagari = any(0x0900 <= ord(c) <= 0x097F for c in raw_text)
+
+    # 1. Devanagari Script Analysis
+    if has_devanagari:
+        mr_score = 0
+        hi_score = 0
+        if "ळ" in raw_text:
+            mr_score += 15
+
+        for m in MARATHI_MARKERS:
+            if m in raw_text or m in words:
+                mr_score += 3
+        for h in HINDI_MARKERS:
+            if h in raw_text or h in words:
+                hi_score += 3
+
+        latin_tokens = [w for w in re.findall(r"\b[a-zA-Z]{3,}\b", scrubbed_lower)]
+        en_matches = [w for w in latin_tokens if w in ENGLISH_WORDS]
+        has_english_code_switch = len(en_matches) >= 1
+
+        if mr_score > hi_score:
+            return ("mr", "mr_en" if has_english_code_switch else "pure")
+        elif hi_score > mr_score:
+            return ("hi", "hinglish" if has_english_code_switch else "pure")
+        else:
+            if any(k in raw_text for k in ["आहे", "काय", "साठी", "कागदपत्रे", "पात्रता", "मिळेल", "करावा"]):
+                return ("mr", "mr_en" if has_english_code_switch else "pure")
+            return ("hi", "hinglish" if has_english_code_switch else "pure")
+
+    # 2. Latin Script Analysis (Pure English vs Hinglish vs Marathi-Latin)
+    mr_latin_matches = [m for m in MARATHI_LATIN if m in words or (f" {m} " in f" {scrubbed_lower} ")]
+    hi_latin_matches = [h for h in HINDI_LATIN if h in words or (f" {h} " in f" {scrubbed_lower} ")]
+    en_word_matches = [w for w in words if w in ENGLISH_WORDS]
+
+    mr_latin_score = len(mr_latin_matches)
+    hi_latin_score = len(hi_latin_matches)
+    en_score = len(en_word_matches)
+
+    # If sentence is predominantly English (e.g. 'What is PM-KISAN? Explain its eligibility and required documents.')
+    if en_score >= 2 and en_score > (hi_latin_score + mr_latin_score):
+        return "en", "pure"
+
+    if mr_latin_score > 0 and mr_latin_score >= hi_latin_score:
+        return "mr", "mr_en"
+
+    if hi_latin_score > 0:
+        return "hi", "hinglish"
+
+    if en_score > 0:
+        return "en", "pure"
+
+    # Fallback to user_preference only when query text has zero linguistic cues (e.g. only numbers/symbols)
+    if user_preference in ("mr", "hi", "en"):
+        return user_preference, "pure"
+
+    return "en", "pure"
 
 
 def detect_language(text: str, user_preference: Optional[str] = "auto") -> str:
@@ -125,43 +226,8 @@ def detect_language(text: str, user_preference: Optional[str] = "auto") -> str:
     Detect spoken or written language from query text.
     Returns 'mr' (Marathi), 'hi' (Hindi), or 'en' (English).
     """
-    if user_preference in ("mr", "hi", "en"):
-        return user_preference
-
-    lower_text = text.lower()
-    words = set(re.findall(r"\b\w+\b", lower_text))
-    has_devanagari = any(0x0900 <= ord(c) <= 0x097F for c in text)
-
-    if not has_devanagari:
-        en_word_matches = sum(1 for w in words if w in ENGLISH_WORDS)
-        mr_latin_matches = sum(1 for m in MARATHI_LATIN if m in words or m in lower_text)
-        hi_latin_matches = sum(1 for h in HINDI_LATIN if h in words or h in lower_text)
-
-        if mr_latin_matches > 0 and mr_latin_matches >= hi_latin_matches:
-            return "mr"
-        if hi_latin_matches > 0 and en_word_matches <= 2:
-            return "hi"
-        if en_word_matches >= 2 or (en_word_matches > 0 and not mr_latin_matches and not hi_latin_matches):
-            return "en"
-        if hi_latin_matches > 0:
-            return "hi"
-        return "en"
-
-    # For Devanagari text
-    mr_score = sum(1 for m in MARATHI_MARKERS if m in lower_text or m in words)
-    hi_score = sum(1 for h in HINDI_MARKERS if h in lower_text or h in words)
-
-    if "ळ" in text or "हवी" in text or "आहे" in text or "मला" in text or "शेतकरी" in text or "कागदपत्रे" in text or "मी" in words or "साठी" in text or "मिळेल" in text or "करावा" in text or "कसा" in text or "कुठे" in text:
-        mr_score += 6
-
-    if ("हूँ" in text or "मुझे" in text or "चाहिए" in text or "दस्तावेज" in text or "मैं" in words or "कहाँ" in text or "कैसे" in text) and "आहे" not in text and "कसा" not in text:
-        hi_score += 6
-
-    if mr_score > hi_score:
-        return "mr"
-    elif hi_score > mr_score:
-        return "hi"
-    return "hi"
+    lang, _ = detect_language_and_style(text, user_preference)
+    return lang
 
 
 def _clean_markdown_for_speech(text: str, lang: str = "en") -> str:
@@ -973,8 +1039,28 @@ def _extract_intent(
         return intent
 
     # ── Identify Specific Question Intent Type ────────────────────────────────
+    # Comprehensive Multi-Aspect Inquiry:
+    # Triggered when query inquires about multiple aspects (e.g. overview + eligibility + documents)
+    has_overview_cue = any(k in lower for k in [
+        "what is", "tell me about", "explain", "overview", "योजना क्या है", "योजना काय आहे",
+        "के बारे में", "बद्दल सांगा", "समजावून सांगा", "समझाएं", "समझाइए", "kya hai", "kay ahe", "details"
+    ])
+    has_elig_cue = any(k in lower for k in [
+        "eligibility", "eligible", "पात्रता", "पात्र", "who can apply", "कोण पात्र", "कौन पात्र", "patrata"
+    ])
+    has_doc_cue = any(k in lower for k in [
+        "documents", "document", "कागदपत्रे", "कागदपत्र", "दस्तावेज", "दस्तावेज़", "dastavez", "kagadpatre", "records"
+    ])
+    has_benefit_cue = any(k in lower for k in [
+        "benefit", "benefits", "लाभ", "फायदे", "financial assistance", "पैसे", "money", "kitna milega"
+    ])
+
+    cues_count = sum([has_overview_cue, has_elig_cue, has_doc_cue, has_benefit_cue])
+    if cues_count >= 2 and (has_elig_cue or has_doc_cue):
+        intent["type"] = "comprehensive_scheme_inquiry"
+
     # 0. Geographic / State Availability: "Is this available in Maharashtra?"
-    if any(k in lower for k in [
+    elif any(k in lower for k in [
         "available in maharashtra", "is this available in maharashtra", "in maharashtra",
         "is this available in", "available in my state", "is this in maharashtra",
         "महाराष्ट्रात उपलब्ध आहे का", "महाराष्ट्रात चालू आहे का", "महाराष्ट्र मध्ये आहे का",
@@ -1077,6 +1163,7 @@ def _persist_active_scheme_to_profile(
     conv_id: str,
     scheme_code: str,
     db: Optional[Session] = None,
+    workflow_step: Optional[str] = None,
 ) -> None:
     """
     Persists active scheme context separately for each authenticated user AND conversation ID.
@@ -1098,6 +1185,7 @@ def _persist_active_scheme_to_profile(
 
     active_map[conv_id] = {
         "scheme_code": scheme_code,
+        "workflow_step": workflow_step or "TALK",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -1143,7 +1231,19 @@ def _recover_active_scheme_from_profile(
     if not persisted_code:
         return None
 
-    return next((s for s in schemes if s.scheme_code == persisted_code), None)
+    matched = next((s for s in schemes if s.scheme_code == persisted_code), None)
+    if matched:
+        return matched
+    if persisted_code == "WIDOW-PENSION":
+        return Scheme(
+            scheme_code="WIDOW-PENSION",
+            name="Indira Gandhi National Widow Pension Scheme (IGNWPS / State Widow Pension)",
+            category="social_welfare",
+            ministry="Ministry of Rural Development / Social Welfare Department",
+            benefits="₹1,000 per month DBT direct pension",
+            scheme_status="active",
+        )
+    return None
 
 
 def _resolve_active_scheme(
@@ -1304,57 +1404,323 @@ def process_chat_message(
         .where(Scheme.scheme_status.in_(["active", "pending_verification"]))
     ).all()
 
-    # In-memory session tracking with persistence recovery strictly per conversation ID
+    # In-memory session tracking with persistent DB & profile recovery strictly per user + conversation ID
     session = _get_session(conv_id, user_id=user_id)
+    session["conv_id"] = conv_id
+    load_conversation_state(db=db, conv_id=conv_id, current_user=current_user, profile=profile, session=session)
+
     if not session.get("active_scheme_code") and profile:
         recovered = _recover_active_scheme_from_profile(profile, conv_id, all_schemes)
         if recovered:
             _update_session_scheme(conv_id, recovered.scheme_code, user_id=user_id)
             session["active_scheme_code"] = recovered.scheme_code
+            if profile.profile_data and isinstance(profile.profile_data.get("active_schemes_by_conv"), dict):
+                c_entry = profile.profile_data["active_schemes_by_conv"].get(conv_id)
+                if isinstance(c_entry, dict) and "workflow_step" in c_entry:
+                    session["workflow_step"] = c_entry["workflow_step"]
 
-    lang = detect_language(request.message, request.language)
+    if request.scheme_id:
+        req_matched = next(
+            (s for s in all_schemes if str(s.id) == request.scheme_id or s.scheme_code.upper() == request.scheme_id.upper()),
+            None,
+        )
+        if req_matched:
+            session["active_scheme_code"] = req_matched.scheme_code
+            session["active_scheme_name"] = req_matched.name
+            _update_session_scheme(conv_id, req_matched.scheme_code, user_id=user_id)
 
-    # ── Intelligent Agent Planning: TALK → MATCH → CHECKLIST → PRE-FILL → CONFIRM ──
-    agentic_response = plan_and_execute_agentic_flow(
+    lang, style = detect_language_and_style(request.message, request.language)
+    lower_msg = request.message.strip().lower()
+
+    is_transactional_action = bool(
+        request.form_action in ("confirm_submit", "request_confirmation", "save_draft", "prefill_form")
+        or (
+            any(k in lower_msg for k in ["confirm application", "proceed to confirmation", "submit application", "पुष्टी", "सादर करा"])
+            and session.get("active_scheme_code")
+        )
+        or any(k in lower_msg for k in ["actually", "correction", "change", "mistake", "खरं तर", "बदला", "चूक", "मेरी आय", "माझे उत्पन्न", "माझे वय"])
+    )
+
+    response: Optional[AgentChatResponse] = None
+    detected_intent_type: Optional[str] = None
+
+    # 1. Explicit UI workflow/form transactions & corrections execute deterministically
+    if is_transactional_action:
+        response = plan_and_execute_agentic_flow(
+            db=db,
+            request=request,
+            current_user=current_user,
+            profile=profile,
+            session=session,
+            lang=lang,
+            all_schemes=all_schemes,
+        )
+
+    # 2. Conversational Intelligence & Gemini Tool Calling Orchestrator
+    if response is None:
+        response = run_conversational_orchestrator(
+            db=db,
+            request=request,
+            current_user=current_user,
+            profile=profile,
+            session=session,
+            lang=lang,
+            all_schemes=all_schemes,
+            conv_id=conv_id,
+        )
+
+    # 3. Legacy agentic persona / form trigger fallback
+    if response is None:
+        response = plan_and_execute_agentic_flow(
+            db=db,
+            request=request,
+            current_user=current_user,
+            profile=profile,
+            session=session,
+            lang=lang,
+            all_schemes=all_schemes,
+        )
+
+    # 4. Grounded Q&A intent handlers (application procedure, portal, geographic availability, multi-scheme)
+    if response is None:
+        intent = _extract_intent(request.message, schemes=all_schemes, active_scheme_code=session.get("active_scheme_code"))
+        detected_intent_type = intent["type"]
+
+        if intent["type"] == "multi_scheme_query":
+            response = _handle_multi_scheme_query(db, all_schemes, intent.get("matched_schemes", []), lang, conv_id, profile, request.message, user_id=user_id)
+        elif intent["type"] == "comprehensive_scheme_inquiry":
+            response = _handle_comprehensive_scheme_inquiry(db, all_schemes, intent, lang, conv_id, profile, request.message, style=style, user_id=user_id)
+        elif intent["type"] == "geographic_availability":
+            response = _handle_geographic_availability_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+        elif intent["type"] == "application_procedure":
+            response = _handle_application_procedure_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+        elif intent["type"] == "registration_portal":
+            response = _handle_registration_portal_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+        elif intent["type"] == "benefits_inquiry":
+            response = _handle_benefits_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+        elif intent["type"] == "post_registration_status":
+            response = _handle_post_registration_status_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+        elif intent["type"] == "document_checklist":
+            response = _handle_document_query(db, all_schemes, intent, lang, conv_id, profile, user_id=user_id, current_user=current_user)
+        elif intent["type"] == "eligibility_check":
+            response = _handle_eligibility_query(db, all_schemes, intent, lang, conv_id, profile, user_id=user_id)
+        elif intent["type"] == "scheme_overview":
+            response = _handle_scheme_overview_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+        else:
+            response = _handle_discovery_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+
+    # Sync structured state & persist full turn + session memory across restarts
+    if response.checklist_data and isinstance(response.checklist_data, dict):
+        session["last_checklist"] = response.checklist_data
+    if response.response_type == ChatResponseType.SCHEME_CARDS and isinstance(response.data, list) and response.data:
+        if not session.get("last_scheme_list"):
+            session["last_scheme_list"] = response.data
+    if response.active_scheme and response.active_scheme.get("scheme_code"):
+        session["active_scheme_code"] = response.active_scheme["scheme_code"]
+        _update_session_scheme(conv_id, response.active_scheme["scheme_code"], user_id=user_id)
+
+    if session.get("active_scheme_code") and profile:
+        _persist_active_scheme_to_profile(
+            profile,
+            conv_id,
+            session["active_scheme_code"],
+            db=db,
+            workflow_step=response.workflow_step or session.get("workflow_step"),
+        )
+
+    record_conversation_turn(
         db=db,
-        request=request,
+        conv_id=conv_id,
         current_user=current_user,
         profile=profile,
         session=session,
+        user_message=request.message,
+        assistant_response=response,
         lang=lang,
-        all_schemes=all_schemes,
+        intent=detected_intent_type,
+        tool_calls=getattr(response, "tool_calls_used", None),
     )
-    if agentic_response is not None:
-        if session.get("active_scheme_code") and profile:
-            _persist_active_scheme_to_profile(profile, conv_id, session["active_scheme_code"], db=db)
-        return agentic_response
 
-    intent = _extract_intent(request.message, schemes=all_schemes, active_scheme_code=session.get("active_scheme_code"))
-
-    # Route based on detected intent with user isolation
-    if intent["type"] == "multi_scheme_query":
-        return _handle_multi_scheme_query(db, all_schemes, intent.get("matched_schemes", []), lang, conv_id, profile, request.message, user_id=user_id)
-    elif intent["type"] == "geographic_availability":
-        return _handle_geographic_availability_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
-    elif intent["type"] == "application_procedure":
-        return _handle_application_procedure_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
-    elif intent["type"] == "registration_portal":
-        return _handle_registration_portal_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
-    elif intent["type"] == "benefits_inquiry":
-        return _handle_benefits_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
-    elif intent["type"] == "post_registration_status":
-        return _handle_post_registration_status_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
-    elif intent["type"] == "document_checklist":
-        return _handle_document_query(db, all_schemes, intent, lang, conv_id, profile, user_id=user_id)
-    elif intent["type"] == "eligibility_check":
-        return _handle_eligibility_query(db, all_schemes, intent, lang, conv_id, profile, user_id=user_id)
-    elif intent["type"] == "scheme_overview":
-        return _handle_scheme_overview_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
-    else:
-        return _handle_discovery_query(db, all_schemes, intent, lang, conv_id, profile, request.message, user_id=user_id)
+    return response
 
 
 # ── Specific Intent Handlers ──────────────────────────────────────────────────
+
+def _handle_comprehensive_scheme_inquiry(
+    db: Session,
+    schemes: List[Scheme],
+    intent: Dict[str, Any],
+    lang: str,
+    conv_id: str,
+    profile: Optional[UserProfile],
+    raw_query: str,
+    style: str = "pure",
+    user_id: Optional[str] = None,
+) -> AgentChatResponse:
+    """
+    Handles comprehensive multi-aspect inquiries (overview + benefits + eligibility + documents)
+    with 100% language fidelity across English ('en'), Hindi ('hi'), Marathi ('mr'),
+    Hinglish ('hinglish'), and Marathi-English ('mr_en').
+    """
+    scheme = _resolve_active_scheme(intent.get("scheme_code"), conv_id, schemes, user_id=user_id, profile=profile, db=db)
+    if not scheme:
+        return _handle_clarification_query(lang, conv_id)
+
+    guide = VERIFIED_SCHEME_GUIDES.get(scheme.scheme_code) or _build_generic_scheme_guide(scheme, lang)
+    ver_notice, ver_meta = _format_verification_metadata(scheme, guide, lang)
+    meta = get_localized_scheme_metadata(scheme.scheme_code, lang)
+
+    scheme_name = (meta.get("name") if meta else None) or scheme.name
+    ministry_name = get_localized_ministry(scheme.ministry, lang)
+    category_name = get_localized_category(scheme.category, lang)
+
+    benefits_text = guide.get(f"benefits_{lang}") or (meta.get("benefits") if meta else scheme.benefits)
+    overview_text = (meta.get("description") if meta else scheme.description)
+    beneficiaries_text = (
+        meta.get("target_beneficiaries")
+        if meta
+        else (", ".join(scheme.target_beneficiaries or []) if lang == "en" else "पात्र भारतीय नागरिक")
+    )
+    eligibility_text = (
+        meta.get("eligibility_summary")
+        if meta
+        else (scheme.description if lang == "en" else "अधिकृत नियमांनुसार पात्र नागरिक")
+    )
+
+    portal_url = guide.get("application_url") or scheme.official_url or scheme.source_url or "https://www.india.gov.in/"
+
+    # Build authoritative localized checklist
+    checklist_result = tool_build_checklist(db, None, profile, scheme.scheme_code, lang=lang)
+    items = checklist_result.get("items", [])
+
+    if lang == "mr" and style == "pure":
+        doc_list_text = "\n".join(
+            f"- **{it['title']}** ({'अनिवार्य' if it['is_mandatory'] else 'पर्यायी'}): {it.get('sourcing', {}).get('why_needed', '')} [सक्षम प्राधिकरण: {it.get('sourcing', {}).get('issuing_authority', 'सक्षम शासकीय प्राधिकरण')}]"
+            for it in items
+        )
+        msg = (
+            f"**{scheme_name} ({scheme.scheme_code}) चा संपूर्ण तपशील, पात्रता आणि आवश्यक कागदपत्रे:**\n\n"
+            f"📌 **उद्देश व स्वरूप:**\n{overview_text}\n\n"
+            f"💰 **शासकीय लाभ व आर्थिक सहाय्य:**\n{benefits_text}\n\n"
+            f"🎯 **पात्रता निकष व लाभार्थी:**\n"
+            f"• **पात्र लाभार्थी:** {beneficiaries_text}\n"
+            f"• **मुख्य पात्रता अटी:** {eligibility_text}\n\n"
+            f"📄 **आवश्यक अधिकृत कागदपत्रे:**\n{doc_list_text}\n\n"
+            f"🌐 **अधिकृत संकेतस्थळ:** [{portal_url}]({portal_url})\n\n"
+            f"📌 **महत्त्वाची टीप:** सर्व कागदपत्रांवरील नाव आणि जन्मतारीख आधार कार्ड व बँक खात्याशी तंतोतंत जुळणे आवश्यक आहे.\n\n"
+            f"{ver_notice}"
+        )
+        followups = [
+            f"{scheme.scheme_code} साठी अर्ज कसा करावा?",
+            "नोंदणी कुठे करावी?",
+            "मला किती पैसे मिळतील?",
+        ]
+    elif lang == "hi" and style == "pure":
+        doc_list_text = "\n".join(
+            f"- **{it['title']}** ({'अनिवार्य' if it['is_mandatory'] else 'वैकल्पिक'}): {it.get('sourcing', {}).get('why_needed', '')} [जारीकर्ता प्राधिकरण: {it.get('sourcing', {}).get('issuing_authority', 'सक्षम सरकारी प्राधिकरण')}]"
+            for it in items
+        )
+        msg = (
+            f"**{scheme_name} ({scheme.scheme_code}) का संपूर्ण विवरण, पात्रता एवं आवश्यक दस्तावेज़:**\n\n"
+            f"📌 **उद्देश्य एवं परिचय:**\n{overview_text}\n\n"
+            f"💰 **वित्तीय लाभ एवं सहायता:**\n{benefits_text}\n\n"
+            f"🎯 **पात्रता मानदंड एवं लक्षित लाभार्थी:**\n"
+            f"• **लक्षित लाभार्थी:** {beneficiaries_text}\n"
+            f"• **मुख्य पात्रता शर्तें:** {eligibility_text}\n\n"
+            f"📄 **आवश्यक आधिकारिक दस्तावेज़:**\n{doc_list_text}\n\n"
+            f"🌐 **आधिकारिक पोर्टल:** [{portal_url}]({portal_url})\n\n"
+            f"📌 **महत्वपूर्ण सूचना:** सभी दस्तावेजों में नाम और जन्म तिथि आधार कार्ड एवं बैंक खाते से मेल खानी चाहिए।\n\n"
+            f"{ver_notice}"
+        )
+        followups = [
+            f"{scheme.scheme_code} के लिए आवेदन कैसे करें?",
+            "पंजीकरण कहाँ करें?",
+            "कितने पैसे मिलेंगे?",
+        ]
+    elif style == "hinglish":
+        doc_list_text = "\n".join(
+            f"- **{it['title']}** ({'Mandatory' if it['is_mandatory'] else 'Optional'}): {it.get('sourcing', {}).get('why_needed', '')} [Issuing Authority: {it.get('sourcing', {}).get('issuing_authority', 'Competent Authority')}]"
+            for it in items
+        )
+        msg = (
+            f"**{scheme_name} ({scheme.scheme_code}) ki Eligibility, Benefits aur Required Documents:**\n\n"
+            f"📌 **Scheme Overview:**\n{overview_text}\n\n"
+            f"💰 **Financial Benefits:**\n{benefits_text}\n\n"
+            f"🎯 **Eligibility Criteria & Beneficiaries:**\n"
+            f"• **Target Beneficiaries:** {beneficiaries_text}\n"
+            f"• **Eligibility Rules:** {eligibility_text}\n\n"
+            f"📄 **Required Documents Checklist:**\n{doc_list_text}\n\n"
+            f"🌐 **Official Portal:** [{portal_url}]({portal_url})\n\n"
+            f"📌 **Important Note:** Sabhi documents me aapka naam aur DOB Aadhaar card aur bank account se match hona chahiye.\n\n"
+            f"{ver_notice}"
+        )
+        followups = [
+            f"{scheme.scheme_code} ke liye apply kaise kare?",
+            "Kaha register kare?",
+            "Status kaise check kare?",
+        ]
+    elif style == "mr_en":
+        doc_list_text = "\n".join(
+            f"- **{it['title']}** ({'Mandatory' if it['is_mandatory'] else 'Optional'}): {it.get('sourcing', {}).get('why_needed', '')} [सक्षम Authority: {it.get('sourcing', {}).get('issuing_authority', 'Competent Authority')}]"
+            for it in items
+        )
+        msg = (
+            f"**{scheme_name} ({scheme.scheme_code}) ची Eligibility, Benefits आणि Required Documents:**\n\n"
+            f"📌 **Scheme Overview:**\n{overview_text}\n\n"
+            f"💰 **Benefits व आर्थिक सहाय्य:**\n{benefits_text}\n\n"
+            f"🎯 **Eligibility Criteria व लाभार्थी:**\n"
+            f"• **Target Beneficiaries:** {beneficiaries_text}\n"
+            f"• **Eligibility Rules:** {eligibility_text}\n\n"
+            f"📄 **Required Documents Checklist:**\n{doc_list_text}\n\n"
+            f"🌐 **Official Portal:** [{portal_url}]({portal_url})\n\n"
+            f"📌 **Important Note:** सर्व documents वरील नाव आणि जन्मतारीख Aadhaar Card आणि Bank Account शी तंतोतंत जुळणे आवश्यक आहे.\n\n"
+            f"{ver_notice}"
+        )
+        followups = [
+            f"{scheme.scheme_code} साठी apply कसा करावा?",
+            "Registration कुठे करावे?",
+            "Benefits किती मिळतील?",
+        ]
+    else:  # Pure English
+        doc_list_text = "\n".join(
+            f"- **{it['title']}** ({'Mandatory' if it['is_mandatory'] else 'Optional'}): {it.get('sourcing', {}).get('why_needed', '')} [Issuing Authority: {it.get('sourcing', {}).get('issuing_authority', 'Competent Government Authority')}]"
+            for it in items
+        )
+        msg = (
+            f"**Overview, Eligibility & Required Documents for {scheme_name} ({scheme.scheme_code}):**\n\n"
+            f"📌 **Scheme Overview:**\n{overview_text}\n\n"
+            f"💰 **Financial Benefits & Assistance:**\n{benefits_text}\n\n"
+            f"🎯 **Eligibility Criteria & Target Beneficiaries:**\n"
+            f"• **Target Beneficiaries:** {beneficiaries_text}\n"
+            f"• **Key Eligibility Rules:** {eligibility_text}\n\n"
+            f"📄 **Required Document Checklist:**\n{doc_list_text}\n\n"
+            f"🌐 **Official Portal & Application Guidance:** [{portal_url}]({portal_url})\n\n"
+            f"📌 **Important Note:** Ensure your name and details on your bank account and land documents match your Aadhaar Card exactly.\n\n"
+            f"{ver_notice}"
+        )
+        followups = [
+            f"How do I apply for {scheme.scheme_code}?",
+            "Where can I register?",
+            "How much money will I receive?",
+        ]
+
+    spoken = _clean_markdown_for_speech(msg, lang)
+
+    return AgentChatResponse(
+        conversation_id=conv_id,
+        message=msg,
+        spoken_text=spoken,
+        detected_language=lang,
+        response_type=ChatResponseType.DOCUMENT_CHECKLIST,
+        workflow_step="CHECKLIST",
+        active_scheme={"scheme_code": scheme.scheme_code, "name": scheme_name},
+        checklist_data=checklist_result,
+        suggested_followups=followups,
+        requires_action=bool(items),
+        action_type="upload_document" if items else None,
+        engine_mode="deterministic",
+    )
+
 
 def _handle_multi_scheme_query(
     db: Session,
@@ -1481,7 +1847,7 @@ def _handle_geographic_availability_query(
         if lang == "mr":
             msg = (
                 f"**होय, {scheme.name} ({scheme.scheme_code}) ही योजना महाराष्ट्रात उपलब्ध आहे.**\n\n"
-                f"ही विशेषतः **महाराष्ट्र शासनाची (Government of Maharashtra)** अधिकृत राज्यस्तरीय योजना असून "
+                f"ही विशेषतः **महाराष्ट्र शासनाची** अधिकृत राज्यस्तरीय योजना असून "
                 f"केवळ महाराष्ट्रातील कायमस्वरूपी रहिवासी नागरिकांसाठी लागू आहे.\n\n"
                 f"🌐 **अधिकृत राज्य पोर्टल:** [{portal_url}]({portal_url})\n\n"
                 f"{ver_notice}"
@@ -1490,7 +1856,7 @@ def _handle_geographic_availability_query(
         elif lang == "hi":
             msg = (
                 f"**हाँ, {scheme.name} ({scheme.scheme_code}) योजना महाराष्ट्र में उपलब्ध है।**\n\n"
-                f"यह विशेष रूप से **महाराष्ट्र शासन (महाराष्ट्र सरकार)** की आधिकारिक योजना है जो केवल "
+                f"यह विशेष रूप से **महाराष्ट्र सरकार** की आधिकारिक राज्य स्तरीय योजना है जो केवल "
                 f"महाराष्ट्र के मूल निवासियों के लिए संचालित की जा रही है।\n\n"
                 f"🌐 **आधिकारिक राज्य पोर्टल:** [{portal_url}]({portal_url})\n\n"
                 f"{ver_notice}"
@@ -1510,7 +1876,7 @@ def _handle_geographic_availability_query(
         if lang == "mr":
             msg = (
                 f"**होय, {scheme.name} ({scheme.scheme_code}) ही योजना महाराष्ट्रात उपलब्ध आहे.**\n\n"
-                f"ही **केंद्र शासनाची (Government of India)** राष्ट्रीय कल्याणकारी योजना असून महाराष्ट्रासह "
+                f"ही **केंद्र शासनाची** राष्ट्रीय कल्याणकारी योजना असून महाराष्ट्रासह "
                 f"देशभरातील सर्व राज्ये व केंद्रशासित प्रदेशांमध्ये लागू आहे. महाराष्ट्रातील सर्व पात्र नागरिक "
                 f"या योजनेसाठी अर्ज करू शकतात.\n\n"
                 f"🌐 **अधिकृत पोर्टल:** [{portal_url}]({portal_url})\n\n"
@@ -1520,7 +1886,7 @@ def _handle_geographic_availability_query(
         elif lang == "hi":
             msg = (
                 f"**हाँ, {scheme.name} ({scheme.scheme_code}) योजना महाराष्ट्र में उपलब्ध है।**\n\n"
-                f"यह **केंद्र सरकार (Government of India)** की राष्ट्रव्यापी योजना है जो महाराष्ट्र सहित "
+                f"यह **केंद्र सरकार** की राष्ट्रव्यापी योजना है जो महाराष्ट्र सहित "
                 f"देश के सभी राज्यों में लागू है। महाराष्ट्र के पात्र नागरिक इस योजना के लिए पूरी तरह आवेदन कर सकते हैं।\n\n"
                 f"🌐 **आधिकारिक पोर्टल:** [{portal_url}]({portal_url})\n\n"
                 f"{ver_notice}"
@@ -1614,7 +1980,7 @@ def _handle_application_procedure_query(
     if lang == "mr":
         msg = (
             f"**{scheme.name} ({scheme.scheme_code}) साठी अर्ज कसा करावा:**\n\n"
-            f"**ऑनलाईन अर्ज प्रक्रिया (Online Steps):**\n"
+            f"**ऑनलाईन अर्ज प्रक्रिया:**\n"
             f"{steps_formatted}\n\n"
             f"**अधिकृत नोंदणी पोर्टल:** [{app_url}]({app_url})\n\n"
             f"**ऑफलाइन अर्ज पर्याय:**\n{offline_proc}\n\n"
@@ -1633,7 +1999,7 @@ def _handle_application_procedure_query(
     elif lang == "hi":
         msg = (
             f"**{scheme.name} ({scheme.scheme_code}) के लिए आवेदन कैसे करें:**\n\n"
-            f"**ऑनलाइन आवेदन प्रक्रिया (Online Steps):**\n"
+            f"**ऑनलाइन आवेदन प्रक्रिया:**\n"
             f"{steps_formatted}\n\n"
             f"**आधिकारिक आवेदन पोर्टल:** [{app_url}]({app_url})\n\n"
             f"**ऑफलाइन आवेदन विकल्प:**\n{offline_proc}\n\n"
@@ -1702,7 +2068,7 @@ def _handle_application_procedure_query(
     }
 
     spoken = _clean_markdown_for_speech(msg, lang)
-    form_draft = tool_fill_form(db, None, profile, scheme.scheme_code)
+    form_draft = tool_fill_form(db, None, profile, scheme.scheme_code, lang=lang)
 
     return AgentChatResponse(
         conversation_id=conv_id,
@@ -1912,10 +2278,10 @@ def _handle_post_registration_status_query(
         msg = (
             f"**{scheme.name} ({scheme.scheme_code}) नोंदणीनंतर काय करावे व अर्जाची स्थिती:**\n\n"
             f"{steps_formatted}\n\n"
-            f"🔍 **अधिकृत अर्जाची स्थिती तपासा (Know Your Status):** [{status_url}]({status_url})\n\n"
+            f"🔍 **अधिकृत अर्जाची स्थिती तपासा:** [{status_url}]({status_url})\n\n"
             f"📌 **पारदर्शकता सूचना:** योजना साथी कोणत्याही अर्जाची खोटी किंवा अंदाजे स्थिती तयार करत नाही. खरी स्थिती पाहण्यासाठी अधिकृत सरकारी पोर्टलवर आपला नोंदणी क्रमांक टाका."
         )
-        spoken = f"नोंदणीनंतर अनिवार्य e-KYC पूर्ण करा आणि अधिकृत पोर्टलवर नो युवर स्टेटस पर्यायातून अर्जाची स्थिती तपासा."
+        spoken = f"नोंदणीनंतर अनिवार्य e-KYC पूर्ण करा आणि अधिकृत पोर्टलवर अर्जाची स्थिती तपासा."
         followups = [
             f"{scheme.scheme_code} अंतर्गत किती पैसे मिळतात?",
             "नोंदणी कुठे करावी?",
@@ -1925,10 +2291,10 @@ def _handle_post_registration_status_query(
         msg = (
             f"**{scheme.name} ({scheme.scheme_code}) पंजीकरण के बाद के चरण और स्थिति ट्रैकिंग:**\n\n"
             f"{steps_formatted}\n\n"
-            f"🔍 **आधिकारिक आवेदन की स्थिति जांचें (Know Your Status):** [{status_url}]({status_url})\n\n"
+            f"🔍 **आधिकारिक आवेदन की स्थिति जांचें:** [{status_url}]({status_url})\n\n"
             f"📌 **पारदर्शिता सूचना:** योजना साथी किसी भी नागरिक के आवेदन की मनगढ़ंत या फर्जी स्थिति नहीं बताता। आवेदन की वास्तविक सरकारी स्थिति जानने हेतु केवल आधिकारिक पोर्टल पर अपना रजिस्ट्रेशन नंबर दर्ज करें।"
         )
-        spoken = f"पंजीकरण के बाद अनिवार्य ई-केवाईसी पूरी करें और आधिकारिक पोर्टल पर स्टेटस चेक करें।"
+        spoken = f"पंजीकरण के बाद अनिवार्य ई-केवाईसी पूरी करें और आधिकारिक पोर्टल पर आवेदन की स्थिति देखें।"
         followups = [
             f"{scheme.scheme_code} के तहत कितने पैसे मिलते हैं?",
             "पंजीकरण कहाँ करें?",
@@ -1976,6 +2342,7 @@ def _handle_document_query(
     conv_id: str,
     profile: Optional[UserProfile],
     user_id: Optional[str] = None,
+    current_user: Optional[User] = None,
 ) -> AgentChatResponse:
     """Handles questions asking what documents are required."""
     scheme = _resolve_active_scheme(intent.get("scheme_code"), conv_id, schemes, user_id=user_id, profile=profile, db=db)
@@ -1983,6 +2350,9 @@ def _handle_document_query(
         return _handle_clarification_query(lang, conv_id)
     docs = scheme.documents or []
     ver_notice, _ = _format_verification_metadata(scheme, None, lang)
+    meta = get_localized_scheme_metadata(scheme.scheme_code, lang)
+    scheme_name = (meta.get("name") if meta else None) or scheme.name
+    ministry_name = get_localized_ministry(scheme.ministry, lang)
 
     doc_payload = [
         {
@@ -2000,60 +2370,76 @@ def _handle_document_query(
     portal_url = scheme.official_url or scheme.source_url or "https://www.india.gov.in/"
 
     if doc_payload:
-        doc_list_text = "\n".join(
-            f"- **{d['title']}** ({'अनिवार्य / Mandatory' if d['is_mandatory'] else 'पर्यायी / Optional'}): {d['guidance']} [प्राधिकरण: {d['issuing_authority']}]"
-            for d in doc_payload
-        )
+        formatted_items = []
+        for d in doc_payload:
+            sourcing = get_document_sourcing_info(d["document_type"], lang=lang)
+            doc_title = sourcing.get("title") or d["title"]
+            authority = sourcing.get("issuing_authority") or d["issuing_authority"]
+            guidance = sourcing.get("why_needed") or d["guidance"]
+
+            if lang == "mr":
+                mand_tag = "अनिवार्य" if d["is_mandatory"] else "पर्यायी"
+                auth_tag = f"[सक्षम प्राधिकरण: {authority}]"
+            elif lang == "hi":
+                mand_tag = "अनिवार्य" if d["is_mandatory"] else "वैकल्पिक"
+                auth_tag = f"[जारीकर्ता प्राधिकरण: {authority}]"
+            else:
+                mand_tag = "Mandatory" if d["is_mandatory"] else "Optional"
+                auth_tag = f"[Issuing Authority: {authority}]"
+
+            formatted_items.append(f"- **{doc_title}** ({mand_tag}): {guidance} {auth_tag}")
+
+        doc_list_text = "\n".join(formatted_items)
         if lang == "mr":
             msg = (
-                f"**{scheme.name} ({scheme.scheme_code}) साठी आवश्यक अधिकृत कागदपत्रे:**\n\n"
+                f"**{scheme_name} ({scheme.scheme_code}) साठी आवश्यक अधिकृत कागदपत्रे:**\n\n"
                 f"{doc_list_text}\n\n"
-                f"📌 **महत्त्वाची टीप:** सर्व कागदपत्रांवरील नाव आणि जन्मतारीख आधार कार्डाशी जुळणे आवश्यक आहे.\n\n"
+                f"📌 **महत्त्वाची टीप:** सर्व कागदपत्रांवरील नाव आणि जन्मतारीख आधार कार्ड व बँक खात्याशी तंतोतंत जुळणे आवश्यक आहे.\n\n"
                 f"{ver_notice}"
             )
-            spoken = f"{scheme.name} साठी आधार कार्ड, बँक पासबुक आणि संबंधित कागदपत्रे लागतील. खालील यादी पहा."
+            spoken = f"{scheme_name} साठी आधार कार्ड, बँक पासबुक आणि संबंधित कागदपत्रे लागतील. खालील यादी पहा."
         elif lang == "hi":
             msg = (
-                f"**{scheme.name} ({scheme.scheme_code}) के लिए आवश्यक आधिकारिक दस्तावेज:**\n\n"
+                f"**{scheme_name} ({scheme.scheme_code}) के लिए आवश्यक आधिकारिक दस्तावेज:**\n\n"
                 f"{doc_list_text}\n\n"
-                f"📌 **महत्वपूर्ण सूचना:** सभी दस्तावेजों में नाम और जन्म तिथि आधार कार्ड से मेल खानी चाहिए।\n\n"
+                f"📌 **महत्वपूर्ण सूचना:** सभी दस्तावेजों में नाम और जन्म तिथि आधार कार्ड एवं बैंक खाते से मेल खानी चाहिए।\n\n"
                 f"{ver_notice}"
             )
-            spoken = f"{scheme.name} के लिए आधार कार्ड, बैंक पासबुक और आवश्यक दस्तावेज लगेंगे। नीचे विवरण देखें."
+            spoken = f"{scheme_name} के लिए आधार कार्ड, बैंक पासबुक और आवश्यक दस्तावेज लगेंगे। नीचे विवरण देखें।"
         else:
             msg = (
-                f"**Official Checklist of Required Documents for {scheme.name} ({scheme.scheme_code}):**\n\n"
+                f"**Official Checklist of Required Documents for {scheme_name} ({scheme.scheme_code}):**\n\n"
                 f"{doc_list_text}\n\n"
                 f"📌 **Important Note:** Ensure the name on your bank account and land documents matches your Aadhaar Card exactly.\n\n"
                 f"{ver_notice}"
             )
-            spoken = f"For {scheme.name}, check the required document checklist below."
+            spoken = f"For {scheme_name}, check the required document checklist below."
     else:
         # Factual transparency: information unavailable in database checklist
         if lang == "mr":
             msg = (
-                f"**{scheme.name} ({scheme.scheme_code}) साठी आवश्यक कागदपत्रे:**\n\n"
+                f"**{scheme_name} ({scheme.scheme_code}) साठी आवश्यक कागदपत्रे:**\n\n"
                 f"⚠️ **माहिती अद्याप उपलब्ध नाही:** या योजनेसाठी आवश्यक कागदपत्रांची स्वतंत्र यादी सध्या डेटाबेसमध्ये उपलब्ध नाही.\n\n"
-                f"कृपया अधिकृत संकेतस्थळावर थेट खात्री करा किंवा स्थानिक {scheme.ministry} कार्यालयाशी संपर्क साधा: [{portal_url}]({portal_url})\n\n"
+                f"कृपया अधिकृत संकेतस्थळावर थेट खात्री करा किंवा स्थानिक {ministry_name} कार्यालयाशी संपर्क साधा: [{portal_url}]({portal_url})\n\n"
                 f"{ver_notice}"
             )
-            spoken = f"{scheme.name} साठी कागदपत्रांची अधिकृत यादी सध्या डेटाबेसमध्ये उपलब्ध नाही. अधिकृत पोर्टल पहा."
+            spoken = f"{scheme_name} साठी कागदपत्रांची अधिकृत यादी सध्या डेटाबेसमध्ये उपलब्ध नाही. अधिकृत पोर्टल पहा."
         elif lang == "hi":
             msg = (
-                f"**{scheme.name} ({scheme.scheme_code}) के लिए आवश्यक आधिकारिक दस्तावेज:**\n\n"
+                f"**{scheme_name} ({scheme.scheme_code}) के लिए आवश्यक आधिकारिक दस्तावेज:**\n\n"
                 f"⚠️ **सूचना उपलब्ध नहीं:** इस योजना के लिए आवश्यक दस्तावेजों की आधिकारिक चेकलिस्ट वर्तमान में डेटाबेस में उपलब्ध नहीं है।\n\n"
-                f"कृपया आधिकारिक पोर्टल देखें या संबंधित {scheme.ministry} कार्यालय से पुष्टि करें: [{portal_url}]({portal_url})\n\n"
+                f"कृपया आधिकारिक पोर्टल देखें या संबंधित {ministry_name} कार्यालय से पुष्टि करें: [{portal_url}]({portal_url})\n\n"
                 f"{ver_notice}"
             )
-            spoken = f"{scheme.name} के दस्तावेजों की आधिकारिक सूची डेटाबेस में उपलब्ध नहीं है। आधिकारिक पोर्टल देखें।"
+            spoken = f"{scheme_name} के दस्तावेजों की आधिकारिक सूची डेटाबेस में उपलब्ध नहीं है। आधिकारिक पोर्टल देखें।"
         else:
             msg = (
-                f"**Official Checklist of Required Documents for {scheme.name} ({scheme.scheme_code}):**\n\n"
+                f"**Official Checklist of Required Documents for {scheme_name} ({scheme.scheme_code}):**\n\n"
                 f"⚠️ **Information Currently Unavailable:** The statutory document checklist for this scheme is currently unavailable in the database records.\n\n"
-                f"Please verify required documents directly at the official portal or contact the administrative office of {scheme.ministry}: [{portal_url}]({portal_url})\n\n"
+                f"Please verify required documents directly at the official portal or contact the administrative office of {ministry_name}: [{portal_url}]({portal_url})\n\n"
                 f"{ver_notice}"
             )
-            spoken = f"Official document checklist for {scheme.name} is currently unavailable in the database. Please check the official portal."
+            spoken = f"Official document checklist for {scheme_name} is currently unavailable in the database. Please check the official portal."
 
     followups = [
         f"{scheme.scheme_code} साठी अर्ज कसा करावा?" if lang == "mr" else f"{scheme.scheme_code} के लिए आवेदन कैसे करें?" if lang == "hi" else f"How do I apply for {scheme.scheme_code}?",
@@ -2062,7 +2448,7 @@ def _handle_document_query(
     ]
 
     spoken = _clean_markdown_for_speech(msg, lang)
-    checklist_result = tool_build_checklist(db, None, profile, scheme.scheme_code)
+    checklist_result = tool_build_checklist(db, current_user, profile, scheme.scheme_code, lang=lang)
 
     return AgentChatResponse(
         conversation_id=conv_id,
@@ -2095,10 +2481,21 @@ def _handle_eligibility_query(
     if not scheme:
         return _handle_clarification_query(lang, conv_id)
 
+    guide = VERIFIED_SCHEME_GUIDES.get(scheme.scheme_code) or _build_generic_scheme_guide(scheme, lang)
     ver_notice, _ = _format_verification_metadata(scheme, None, lang)
+    meta = get_localized_scheme_metadata(scheme.scheme_code, lang)
 
-    # 1. Target beneficiaries from database record
-    beneficiaries_str = ", ".join(scheme.target_beneficiaries) if scheme.target_beneficiaries else ("All eligible Indian citizens" if lang == "en" else "पात्र भारतीय नागरिक")
+    scheme_name = (meta.get("name") if meta else None) or scheme.name
+    ministry_name = get_localized_ministry(scheme.ministry, lang)
+    benefits_text = guide.get(f"benefits_{lang}") or (meta.get("benefits") if meta else scheme.benefits)
+
+    # 1. Target beneficiaries from localized knowledge or database record
+    if meta and meta.get("target_beneficiaries"):
+        beneficiaries_str = meta["target_beneficiaries"]
+    elif scheme.target_beneficiaries:
+        beneficiaries_str = ", ".join(scheme.target_beneficiaries) if lang == "en" else "पात्र भारतीय नागरिक"
+    else:
+        beneficiaries_str = "All eligible Indian citizens" if lang == "en" else "पात्र भारतीय नागरिक"
 
     # 2. Personalized evaluation if citizen profile exists
     eval_result = None
@@ -2111,10 +2508,10 @@ def _handle_eligibility_query(
         SchemeCardSummary(
             id=str(scheme.id),
             scheme_code=scheme.scheme_code,
-            name=scheme.name,
+            name=scheme_name,
             category=scheme.category,
-            ministry=scheme.ministry,
-            benefits=scheme.benefits,
+            ministry=ministry_name,
+            benefits=benefits_text,
             eligibility_status=status_str,
             official_url=scheme.official_url or scheme.source_url,
         ).model_dump()
@@ -2123,16 +2520,16 @@ def _handle_eligibility_query(
     # Multilingual response combining statutory criteria + profile evaluation
     if lang == "mr":
         msg = (
-            f"**{scheme.name} ({scheme.scheme_code}) ची अधिकृत पात्रता आणि निकष:**\n\n"
+            f"**{scheme_name} ({scheme.scheme_code}) ची अधिकृत पात्रता आणि निकष:**\n\n"
             f"🎯 **पात्र लाभार्थी:** {beneficiaries_str}\n\n"
-            f"💰 **शासकीय लाभ:** {scheme.benefits}\n\n"
-            f"🏛️ **प्रशासकीय मंत्रालय:** {scheme.ministry}\n\n"
+            f"💰 **शासकीय लाभ:** {benefits_text}\n\n"
+            f"🏛️ **प्रशासकीय मंत्रालय:** {ministry_name}\n\n"
         )
         if eval_result:
             if status_str == "eligible":
-                msg += f"✅ **वैयक्तिक पात्रता पडताळणी:** अभिनंदन! आपल्या जतन केलेल्या प्रोफाईलनुसार आपण या योजनेसाठी **पात्र (Eligible)** आहात.\n\n"
+                msg += f"✅ **वैयक्तिक पात्रता पडताळणी:** अभिनंदन! आपल्या जतन केलेल्या प्रोफाईलनुसार आपण या योजनेसाठी **पात्र** आहात.\n\n"
             elif status_str == "potentially_eligible":
-                msg += f"ℹ️ **वैयक्तिक पात्रता पडताळणी:** आपल्या प्रोफाईलनुसार आपण **संभाव्य पात्र (Potentially Eligible)** आहात. अंतिम मंजुरीसाठी कागदपत्र पडताळणी आवश्यक आहे.\n\n"
+                msg += f"ℹ️ **वैयक्तिक पात्रता पडताळणी:** आपल्या प्रोफाईलनुसार आपण **संभाव्य पात्र** आहात. अंतिम मंजुरीसाठी कागदपत्र पडताळणी आवश्यक आहे.\n\n"
             elif status_str == "insufficient_information":
                 missing_text = ", ".join(m.replace("_", " ") for m in eval_result.missing_fields)
                 msg += f"ℹ️ **प्रोफाईल सूचना:** पात्रता निश्चित करण्यासाठी प्रोफाईलमध्ये **{missing_text}** ही माहिती आवश्यक आहे.\n\n"
@@ -2142,7 +2539,7 @@ def _handle_eligibility_query(
         else:
             msg += "ℹ️ **टीप:** आपल्या वैयक्तिक पात्रतेची स्वयंचलित पडताळणी करण्यासाठी कृपया प्रोफाईल पूर्ण करा.\n\n"
         msg += ver_notice
-        spoken = f"{scheme.name} साठी पात्र लाभार्थी: {beneficiaries_str[:80]}."
+        spoken = f"{scheme_name} साठी पात्र लाभार्थी: {beneficiaries_str[:80]}."
 
         followups = [
             f"{scheme.scheme_code} साठी अर्ज कसा करावा?",
@@ -2151,16 +2548,16 @@ def _handle_eligibility_query(
         ]
     elif lang == "hi":
         msg = (
-            f"**{scheme.name} ({scheme.scheme_code}) की आधिकारिक पात्रता व शर्तें:**\n\n"
+            f"**{scheme_name} ({scheme.scheme_code}) की आधिकारिक पात्रता व शर्तें:**\n\n"
             f"🎯 **लक्षित लाभार्थी:** {beneficiaries_str}\n\n"
-            f"💰 **सरकारी लाभ:** {scheme.benefits}\n\n"
-            f"🏛️ **प्रशासनिक मंत्रालय:** {scheme.ministry}\n\n"
+            f"💰 **सरकारी लाभ:** {benefits_text}\n\n"
+            f"🏛️ **प्रशासनिक मंत्रालय:** {ministry_name}\n\n"
         )
         if eval_result:
             if status_str == "eligible":
-                msg += f"✅ **व्यक्तिगत पात्रता जांच:** बधाई हो! आपकी सहेजी गई प्रोफ़ाइल के अनुसार आप इस योजना के लिए **पात्र (Eligible)** हैं।\n\n"
+                msg += f"✅ **व्यक्तिगत पात्रता जांच:** बधाई हो! आपकी सहेजी गई प्रोफ़ाइल के अनुसार आप इस योजना के लिए **पात्र** हैं।\n\n"
             elif status_str == "potentially_eligible":
-                msg += f"ℹ️ **व्यक्तिगत पात्रता जांच:** आपकी प्रोफ़ाइल के अनुसार आप **संभावित रूप से पात्र (Potentially Eligible)** हैं। दस्तावेज़ सत्यापन आवश्यक है।\n\n"
+                msg += f"ℹ️ **व्यक्तिगत पात्रता जांच:** आपकी प्रोफ़ाइल के अनुसार आप **संभावित रूप से पात्र** हैं। दस्तावेज़ सत्यापन आवश्यक है।\n\n"
             elif status_str == "insufficient_information":
                 missing_text = ", ".join(m.replace("_", " ") for m in eval_result.missing_fields)
                 msg += f"ℹ️ **प्रोफ़ाइल सूचना:** पात्रता पुष्टि हेतु प्रोफ़ाइल में **{missing_text}** विवरण आवश्यक है।\n\n"
@@ -2170,7 +2567,7 @@ def _handle_eligibility_query(
         else:
             msg += "ℹ️ **नोट:** अपनी व्यक्तिगत पात्रता की स्वचालित जांच के लिए कृपया अपनी प्रोफ़ाइल पूरी करें।\n\n"
         msg += ver_notice
-        spoken = f"{scheme.name} के लिए लक्षित लाभार्थी: {beneficiaries_str[:80]}."
+        spoken = f"{scheme_name} के लिए लक्षित लाभार्थी: {beneficiaries_str[:80]}."
 
         followups = [
             f"{scheme.scheme_code} के लिए आवेदन कैसे करें?",
@@ -2179,10 +2576,10 @@ def _handle_eligibility_query(
         ]
     else:
         msg = (
-            f"**Official Eligibility & Target Beneficiaries for {scheme.name} ({scheme.scheme_code}):**\n\n"
+            f"**Official Eligibility & Target Beneficiaries for {scheme_name} ({scheme.scheme_code}):**\n\n"
             f"🎯 **Target Beneficiaries:** {beneficiaries_str}\n\n"
-            f"💰 **Statutory Benefits:** {scheme.benefits}\n\n"
-            f"🏛️ **Administering Ministry:** {scheme.ministry}\n\n"
+            f"💰 **Statutory Benefits:** {benefits_text}\n\n"
+            f"🏛️ **Administering Ministry:** {ministry_name}\n\n"
         )
         if eval_result:
             if status_str == "eligible":
@@ -2198,7 +2595,7 @@ def _handle_eligibility_query(
         else:
             msg += "ℹ️ **Note:** Complete or update your citizen profile to receive automatic personalized eligibility evaluation.\n\n"
         msg += ver_notice
-        spoken = f"Target beneficiaries for {scheme.name}: {beneficiaries_str[:80]}."
+        spoken = f"Target beneficiaries for {scheme_name}: {beneficiaries_str[:80]}."
 
         followups = [
             f"How do I apply for {scheme.scheme_code}?",
@@ -2235,17 +2632,30 @@ def _handle_scheme_overview_query(
     if not scheme:
         return _handle_clarification_query(lang, conv_id)
 
+    guide = VERIFIED_SCHEME_GUIDES.get(scheme.scheme_code) or _build_generic_scheme_guide(scheme, lang)
     ver_notice, _ = _format_verification_metadata(scheme, None, lang)
+    meta = get_localized_scheme_metadata(scheme.scheme_code, lang)
+    scheme_name = (meta.get("name") if meta else None) or scheme.name
+    ministry_name = get_localized_ministry(scheme.ministry, lang)
     portal_url = scheme.official_url or scheme.source_url or "https://www.india.gov.in/"
+
+    desc_text = scheme.description if lang == "en" else ((meta.get("description") if meta else None) or scheme.description)
+    benefits_text = scheme.benefits if lang == "en" else (guide.get(f"benefits_{lang}") or (meta.get("benefits") if meta else scheme.benefits))
+    if meta and meta.get("target_beneficiaries"):
+        beneficiaries_text = meta["target_beneficiaries"]
+    elif scheme.target_beneficiaries:
+        beneficiaries_text = ", ".join(scheme.target_beneficiaries) if lang == "en" else "पात्र भारतीय नागरिक"
+    else:
+        beneficiaries_text = "All eligible Indian citizens" if lang == "en" else "पात्र भारतीय नागरिक"
 
     card_data = [
         SchemeCardSummary(
             id=str(scheme.id),
             scheme_code=scheme.scheme_code,
-            name=scheme.name,
+            name=scheme_name,
             category=scheme.category,
-            ministry=scheme.ministry,
-            benefits=scheme.benefits,
+            ministry=ministry_name,
+            benefits=benefits_text,
             eligibility_status="verified" if scheme.scheme_status == "active" else "pending_verification",
             official_url=portal_url,
         ).model_dump()
@@ -2253,15 +2663,15 @@ def _handle_scheme_overview_query(
 
     if lang == "mr":
         msg = (
-            f"**{scheme.name} ({scheme.scheme_code}) योजनेचा तपशील:**\n\n"
-            f"📌 **उद्देश:** {scheme.description}\n\n"
-            f"💰 **लाभ:** {scheme.benefits}\n\n"
-            f"🎯 **पात्र लाभार्थी:** {', '.join(scheme.target_beneficiaries or [])}\n\n"
-            f"🏛️ **मंत्रालय:** {scheme.ministry}\n\n"
+            f"**{scheme_name} ({scheme.scheme_code}) योजनेचा तपशील:**\n\n"
+            f"📌 **उद्देश:** {desc_text}\n\n"
+            f"💰 **लाभ:** {benefits_text}\n\n"
+            f"🎯 **पात्र लाभार्थी:** {beneficiaries_text}\n\n"
+            f"🏛️ **मंत्रालय:** {ministry_name}\n\n"
             f"🌐 **अधिकृत पोर्टल:** [{portal_url}]({portal_url})\n\n"
             f"{ver_notice}"
         )
-        spoken = f"{scheme.name} चा उद्देश {scheme.description[:120]} असा आहे."
+        spoken = f"{scheme_name} चा उद्देश {desc_text[:120]} असा आहे."
         followups = [
             f"{scheme.scheme_code} साठी अर्ज कसा करावा?",
             f"{scheme.scheme_code} साठी कोणती कागदपत्रे लागतील?",
@@ -2269,15 +2679,15 @@ def _handle_scheme_overview_query(
         ]
     elif lang == "hi":
         msg = (
-            f"**{scheme.name} ({scheme.scheme_code}) का संपूर्ण विवरण:**\n\n"
-            f"📌 **उद्देश्य:** {scheme.description}\n\n"
-            f"💰 **वित्तीय लाभ:** {scheme.benefits}\n\n"
-            f"🎯 **लक्षित लाभार्थी:** {', '.join(scheme.target_beneficiaries or [])}\n\n"
-            f"🏛️ **मंत्रालय:** {scheme.ministry}\n\n"
+            f"**{scheme_name} ({scheme.scheme_code}) का संपूर्ण विवरण:**\n\n"
+            f"📌 **उद्देश्य:** {desc_text}\n\n"
+            f"💰 **वित्तीय लाभ:** {benefits_text}\n\n"
+            f"🎯 **लक्षित लाभार्थी:** {beneficiaries_text}\n\n"
+            f"🏛️ **मंत्रालय:** {ministry_name}\n\n"
             f"🌐 **आधिकारिक पोर्टल:** [{portal_url}]({portal_url})\n\n"
             f"{ver_notice}"
         )
-        spoken = f"{scheme.name} का उद्देश्य {scheme.description[:120]} है।"
+        spoken = f"{scheme_name} का उद्देश्य {desc_text[:120]} है।"
         followups = [
             f"{scheme.scheme_code} के लिए आवेदन कैसे करें?",
             f"{scheme.scheme_code} के लिए कौन से दस्तावेज़ चाहिए?",
@@ -2285,15 +2695,15 @@ def _handle_scheme_overview_query(
         ]
     else:
         msg = (
-            f"**Overview of {scheme.name} ({scheme.scheme_code}):**\n\n"
-            f"📌 **Purpose:** {scheme.description}\n\n"
-            f"💰 **Benefits:** {scheme.benefits}\n\n"
-            f"🎯 **Target Beneficiaries:** {', '.join(scheme.target_beneficiaries or [])}\n\n"
-            f"🏛️ **Administering Ministry:** {scheme.ministry}\n\n"
+            f"**Overview of {scheme_name} ({scheme.scheme_code}):**\n\n"
+            f"📌 **Purpose:** {desc_text}\n\n"
+            f"💰 **Benefits:** {benefits_text}\n\n"
+            f"🎯 **Target Beneficiaries:** {beneficiaries_text}\n\n"
+            f"🏛️ **Administering Ministry:** {ministry_name}\n\n"
             f"🌐 **Official Portal:** [{portal_url}]({portal_url})\n\n"
             f"{ver_notice}"
         )
-        spoken = f"{scheme.name} is designed to {scheme.description[:120]}."
+        spoken = f"{scheme_name} is designed to {desc_text[:120]}."
         followups = [
             f"How do I apply for {scheme.scheme_code}?",
             f"Which documents do I need?",

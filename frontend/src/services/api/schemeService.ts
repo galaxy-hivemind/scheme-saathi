@@ -50,6 +50,6 @@ export const schemeService = {
       }
       return Promise.resolve(scheme);
     }
-    return apiClient.get<Scheme>(`/schemes/${schemeId}`);
+    return apiClient.get<Scheme>(`/schemes/${schemeId}?include_pending=true`);
   },
 };

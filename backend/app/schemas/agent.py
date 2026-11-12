@@ -36,6 +36,10 @@ class AgentChatRequest(BaseModel):
     workflow_step: Optional[str] = Field(None, description="Current workflow step: TALK, MATCH, CHECKLIST, PRE-FILL, CONFIRM")
     form_action: Optional[str] = Field(None, description="Agentic action: 'save_draft', 'confirm_submit', 'request_checklist', etc.")
     form_data: Optional[Dict[str, Any]] = Field(None, description="Citizen editable form data payload")
+    expected_version: Optional[int] = Field(None, description="Reviewed application version expected at confirmation")
+    expected_hash: Optional[str] = Field(None, description="Reviewed snapshot SHA-256 hash expected at confirmation")
+    idempotency_key: Optional[str] = Field(None, description="Idempotency key guarding duplicate submission")
+    official_reference_number: Optional[str] = Field(None, description="Citizen-returned official portal application reference number (Mode B)")
 
 
 class SchemeCardSummary(BaseModel):
@@ -68,3 +72,4 @@ class AgentChatResponse(BaseModel):
     checklist_data: Optional[Dict[str, Any]] = Field(None, description="Result of build_checklist execution")
     form_draft_data: Optional[Dict[str, Any]] = Field(None, description="Result of fill_form execution")
     confirmation_data: Optional[Dict[str, Any]] = Field(None, description="Result of submit_form execution")
+    tool_calls_used: List[str] = Field(default_factory=list, description="Real backend tools executed for this turn")

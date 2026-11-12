@@ -3,16 +3,32 @@ import { Link } from 'react-router-dom';
 import { agentService } from '@/services/api/agentService';
 import {
   ChatMessage,
+  ChatResponseType,
+  PersistedConversationTurn,
   DocumentRequirement,
   ApplicationGuideData,
   BenefitsInfoData,
   StatusTrackingData,
 } from '@/types';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { useVoiceAssistant, AssistantLanguage } from '@/hooks/useVoiceAssistant';
 import { Button } from '@/components/common/Button';
 import { Card, CardContent } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
+import { WorkflowStepper, WorkflowStage } from '@/components/chat/WorkflowStepper';
+import {
+  InteractiveChecklistWidget,
+  ChecklistPayload,
+} from '@/components/chat/InteractiveChecklistWidget';
+import {
+  PreFilledFormWidget,
+  FormDraftPayload,
+} from '@/components/chat/PreFilledFormWidget';
+import {
+  HandoffConfirmationWidget,
+  ConfirmationPayload,
+} from '@/components/chat/HandoffConfirmationWidget';
 import {
   Send,
   Sparkles,
@@ -34,39 +50,200 @@ import {
   CheckCircle2,
   Building2,
   Coins,
+  RotateCcw,
 } from 'lucide-react';
 
-export const ChatPage: React.FC = () => {
-  const { t } = useLanguage();
+const getConversationStorageKey = (userId?: string | null): string =>
+  userId ? `saathi_conv_id_${userId}` : 'saathi_conv_id_anon';
 
-  const [conversationId] = useState<string>(
-    () => `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-  );
-  const [selectedLanguage, setSelectedLanguage] = useState<AssistantLanguage>('auto');
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
+const generateConversationId = (): string =>
+  `conv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+const readOrCreateConversationId = (userId?: string | null): string => {
+  const key = getConversationStorageKey(userId);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const existing = window.localStorage.getItem(key);
+    if (existing && existing.trim()) {
+      return existing;
+    }
+    const created = generateConversationId();
+    window.localStorage.setItem(key, created);
+    return created;
+  }
+  return generateConversationId();
+};
+
+export const ChatPage: React.FC = () => {
+  const { t, language } = useLanguage();
+  const { user, token, isLoading: authLoading } = useAuth();
+
+  const getInitialMessage = (lang: string): ChatMessage => {
+    if (lang === 'en') {
+      return {
+        id: 'init-01',
+        conversation_id: 'conv-init',
+        role: 'assistant',
+        message_content:
+          'Hello! I am your Scheme Saathi. You can ask me in English, Hindi, or Marathi about government welfare schemes, personalized eligibility, required documents, and application steps.',
+        spoken_text:
+          'Hello! I am your Scheme Saathi. You can ask me in English, Hindi, or Marathi about government welfare schemes, personalized eligibility, and required documents.',
+        detected_language: 'en',
+        response_type: 'text',
+        suggested_followups: [
+          'What is PM-KISAN? Explain its eligibility and required documents.',
+          'Which documents do I need for Kisan Credit Card?',
+          'Am I eligible for Ayushman Bharat?',
+          'Show schemes for farmers in Maharashtra',
+        ],
+        created_at: new Date().toISOString(),
+      };
+    }
+    if (lang === 'hi') {
+      return {
+        id: 'init-01',
+        conversation_id: 'conv-init',
+        role: 'assistant',
+        message_content:
+          'नमस्ते! मैं आपका योजना साथी हूँ। आप मुझसे हिंदी, मराठी या अंग्रेजी में सरकारी योजनाओं की जानकारी, पात्रता, आवश्यक दस्तावेज़ और आवेदन प्रक्रिया के बारे में पूछ सकते हैं।',
+        spoken_text:
+          'नमस्ते! मैं आपका योजना साथी हूँ। आप मुझसे सरकारी योजनाओं की जानकारी, पात्रता और आवश्यक दस्तावेज पूछ सकते हैं।',
+        detected_language: 'hi',
+        response_type: 'text',
+        suggested_followups: [
+          'पीएम-किसान योजना क्या है? इसकी पात्रता और आवश्यक दस्तावेज़ समझाइए।',
+          'किसान क्रेडिट कार्ड के लिए कौन से दस्तावेज चाहिए?',
+          'क्या मैं आयुष्मान भारत योजना के लिए पात्र हूँ?',
+          'महाराष्ट्र के किसानों के लिए सरकारी योजनाएं बताएं',
+        ],
+        created_at: new Date().toISOString(),
+      };
+    }
+    return {
       id: 'init-01',
       conversation_id: 'conv-init',
       role: 'assistant',
       message_content:
-        'नमस्ते! मी तुमचा योजना साथी आहे. आपण मराठी, हिंदी किंवा इंग्रजीत बोलून किंवा टाईप करून शासकीय योजनांबद्दल विचारू शकता. मी आपल्या प्रोफाईलनुसार अचूक पात्रता आणि कागदपत्रे सांगेन.\n\nनमस्ते! मैं आपका योजना साथी हूँ। आप मुझसे बोलकर या लिखकर सरकारी योजनाओं की जानकारी, पात्रता और जरूरी दस्तावेज पूछ सकते हैं।',
+        'नमस्ते! मी तुमचा योजना साथी आहे. आपण मराठी, हिंदी किंवा इंग्रजीत शासकीय योजनांची माहिती, आपली वैयक्तिक पात्रता, आवश्यक कागदपत्रे आणि अर्ज प्रक्रियेबद्दल विचारू शकता.',
       spoken_text:
-        'नमस्ते! मी तुमचा योजना साथी आहे. आपण मराठी, हिंदी किंवा इंग्रजीत बोलून किंवा टाईप करून शासकीय योजनांबद्दल विचारू शकता. मी आपल्या प्रोफाईलनुसार अचूक पात्रता आणि कागदपत्रे सांगेन. नमस्ते! मैं आपका योजना साथी हूँ। आप मुझसे बोलकर या लिखकर सरकारी योजनाओं की जानकारी, पात्रता और जरूरी दस्तावेज पूछ सकते हैं।',
+        'नमस्ते! मी तुमचा योजना साथी आहे. आपण मराठी, हिंदी किंवा इंग्रजीत शासकीय योजना, पात्रता आणि कागदपत्रांबद्दल विचारू शकता.',
       detected_language: 'mr',
       response_type: 'text',
       suggested_followups: [
-        'मी शेतकरी आहे. मला कोणत्या योजना मिळू शकतात?',
-        'मला PM किसान योजनेसाठी पात्रता आहे का?',
-        'मला कोणती कागदपत्रे लागतील?',
-        'महाराष्ट्र शासनाच्या योजना सांगा',
+        'पीएम-किसान योजना काय आहे? तिची पात्रता आणि आवश्यक कागदपत्रे समजावून सांगा.',
+        'किसान क्रेडिट कार्डसाठी कोणती कागदपत्रे लागतील?',
+        'मी आयुष्यमान भारत योजनेसाठी पात्र आहे का?',
+        'महाराष्ट्रातील शेतकऱ्यांसाठी योजना सांगा',
       ],
       created_at: new Date().toISOString(),
-    },
-  ]);
+    };
+  };
+
+  const [conversationId, setConversationId] = useState<string>(() =>
+    readOrCreateConversationId(user?.id)
+  );
+  const [selectedLanguage, setSelectedLanguage] = useState<AssistantLanguage>('auto');
+  const [messages, setMessages] = useState<ChatMessage[]>(() => [getInitialMessage(language)]);
+
+  // Synchronize initial welcome message if user switches header language before starting chat
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 1 && prev[0].id === 'init-01') {
+        return [getInitialMessage(language)];
+      }
+      return prev;
+    });
+  }, [language]);
 
   const [input, setInput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStage | string>('TALK');
+  const [activeScheme, setActiveScheme] = useState<{
+    scheme_code?: string;
+    scheme_name?: string;
+    name?: string;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastOwnerKeyRef = useRef<string | null>(null);
+  const hydratedConvRef = useRef<string | null>(null);
+
+  // Persist per-user conversation ID and restore full persisted turns & state across reloads
+  useEffect(() => {
+    if (authLoading) return;
+
+    const ownerKey = user?.id || 'anon';
+    const resolvedConvId = readOrCreateConversationId(user?.id);
+
+    if (lastOwnerKeyRef.current !== null && lastOwnerKeyRef.current !== ownerKey) {
+      // Clear local message state when switching authenticated accounts so no citizen context bleeds over
+      setMessages([getInitialMessage(language)]);
+      setWorkflowStep('TALK');
+      setActiveScheme(null);
+      hydratedConvRef.current = null;
+    }
+    lastOwnerKeyRef.current = ownerKey;
+
+    setConversationId((prev) => (prev === resolvedConvId ? prev : resolvedConvId));
+
+    if (!token || !user?.id || hydratedConvRef.current === resolvedConvId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    agentService
+      .getConversation(resolvedConvId)
+      .then((persisted) => {
+        if (cancelled) return;
+        hydratedConvRef.current = resolvedConvId;
+        const turns: PersistedConversationTurn[] = Array.isArray(persisted?.turns)
+          ? persisted.turns
+          : [];
+        if (turns.length === 0) return;
+
+        const restoredMessages: ChatMessage[] = turns.map((turn, idx) => ({
+          id: turn.id || `restored-${idx}`,
+          conversation_id: persisted.conversation_id || resolvedConvId,
+          role: turn.role,
+          message_content: turn.content || '',
+          spoken_text: turn.spoken_text || turn.content || '',
+          detected_language: turn.language,
+          response_type: (turn.response_type as ChatResponseType) || 'text',
+          data: turn.data,
+          suggested_followups: turn.suggested_followups || [],
+          engine_mode: (turn.engine_mode as 'deterministic' | 'gemini_grounded') || 'deterministic',
+          workflow_step: turn.workflow_step,
+          active_scheme: turn.active_scheme,
+          eligibility_summary: turn.eligibility_summary,
+          checklist_data: turn.checklist_data,
+          form_draft_data: turn.form_draft_data,
+          confirmation_data: turn.confirmation_data,
+          tool_calls_used: turn.tool_calls || [],
+          created_at: turn.created_at || new Date().toISOString(),
+        }));
+
+        setMessages((prev) => {
+          const hasUnsavedUserMsgs = prev.some((m) => m.id !== 'init-01');
+          return hasUnsavedUserMsgs ? prev : restoredMessages;
+        });
+
+        if (persisted.workflow_step) {
+          setWorkflowStep(persisted.workflow_step);
+        }
+        const lastActive = [...turns].reverse().find((t) => t.active_scheme)?.active_scheme;
+        if (lastActive) {
+          setActiveScheme(lastActive);
+        } else if (persisted.active_scheme_code) {
+          setActiveScheme({ scheme_code: persisted.active_scheme_code });
+        }
+      })
+      .catch((err) => {
+        console.debug('Conversation hydration skipped cleanly:', err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user?.id, token]);
 
   // Voice Assistant Hook (Speech-to-Text & Text-to-Speech)
   const {
@@ -104,7 +281,33 @@ export const ChatPage: React.FC = () => {
     scrollToBottom();
   }, [messages, loading, isListening]);
 
-  const handleSend = async (messageText: string) => {
+  // Restore workflow stage and active scheme from conversation message history
+  useEffect(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.workflow_step) {
+        setWorkflowStep(m.workflow_step);
+        if (m.active_scheme) {
+          setActiveScheme(m.active_scheme);
+        }
+        break;
+      }
+    }
+  }, [messages]);
+
+  const handleSend = async (
+    messageText: string,
+    options?: {
+      scheme_id?: string;
+      workflow_step?: string;
+      form_action?: string;
+      form_data?: any;
+      expected_version?: number;
+      expected_hash?: string;
+      idempotency_key?: string;
+      official_reference_number?: string;
+    }
+  ) => {
     const query = messageText.trim();
     if (!query || loading) return;
 
@@ -125,7 +328,24 @@ export const ChatPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const response = await agentService.sendMessage(query, conversationId, selectedLanguage);
+      const response = await agentService.sendMessage(query, conversationId, selectedLanguage, {
+        scheme_id: options?.scheme_id || activeScheme?.scheme_code,
+        workflow_step: options?.workflow_step || (workflowStep as string),
+        form_action: options?.form_action,
+        form_data: options?.form_data,
+        expected_version: options?.expected_version,
+        expected_hash: options?.expected_hash,
+        idempotency_key: options?.idempotency_key,
+        official_reference_number: options?.official_reference_number,
+      });
+
+      // Update workflow stage and active scheme if provided by the backend
+      if (response.workflow_step) {
+        setWorkflowStep(response.workflow_step);
+      }
+      if (response.active_scheme) {
+        setActiveScheme(response.active_scheme);
+      }
 
       const assistantMsg: ChatMessage = {
         id: `asst-${Date.now()}`,
@@ -138,8 +358,23 @@ export const ChatPage: React.FC = () => {
         data: response.data,
         suggested_followups: response.suggested_followups || [],
         engine_mode: response.engine_mode || 'deterministic',
+        workflow_step: response.workflow_step,
+        active_scheme: response.active_scheme,
+        eligibility_summary: response.eligibility_summary,
+        checklist_data: response.checklist_data,
+        form_draft_data: response.form_draft_data,
+        confirmation_data: response.confirmation_data,
+        tool_calls_used: response.tool_calls_used || [],
         created_at: new Date().toISOString(),
       };
+
+      if (response.conversation_id && typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(getConversationStorageKey(user?.id), response.conversation_id);
+        if (response.conversation_id !== conversationId) {
+          hydratedConvRef.current = response.conversation_id;
+          setConversationId(response.conversation_id);
+        }
+      }
 
       setMessages((prev) => [...prev, assistantMsg]);
 
@@ -150,25 +385,44 @@ export const ChatPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Chat error:', err);
+      const errLang = selectedLanguage === 'auto' ? language : selectedLanguage;
+      const errText =
+        errLang === 'en'
+          ? 'Sorry, there was a problem connecting to the server. Please try again.'
+          : errLang === 'mr'
+          ? 'माफ करा, सर्व्हरशी संपर्क साधताना समस्या आली. कृपया पुन्हा प्रयत्न करा.'
+          : 'क्षमा करें, अनुरोध संसाधित करने में समस्या हुई। कृपया पुनः प्रयास करें।';
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
-        conversation_id: 'conv-active',
+        conversation_id: conversationId,
         role: 'assistant',
-        message_content:
-          selectedLanguage === 'mr'
-            ? 'माफ करा, सर्व्हरशी संपर्क साधताना समस्या आली. कृपया पुन्हा प्रयत्न करा.'
-            : 'क्षमा करें, अनुरोध संसाधित करने में समस्या हुई। कृपया पुनः प्रयास करें।',
-        spoken_text:
-          selectedLanguage === 'mr'
-            ? 'माफ करा, सर्व्हरशी संपर्क साधताना समस्या आली. कृपया पुन्हा प्रयत्न करा.'
-            : 'क्षमा करें, अनुरोध संसाधित करने में समस्या हुई। कृपया पुनः प्रयास करें।',
-        detected_language: selectedLanguage === 'auto' ? 'mr' : selectedLanguage,
+        message_content: errText,
+        spoken_text: errText,
+        detected_language: errLang,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleNewConversation = () => {
+    stopSpeaking();
+    if (isListening) {
+      stopListening();
+    }
+    const nextConvId = generateConversationId();
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(getConversationStorageKey(user?.id), nextConvId);
+    }
+    hydratedConvRef.current = nextConvId;
+    setConversationId(nextConvId);
+    const activeLang = selectedLanguage === 'auto' ? language : selectedLanguage;
+    setMessages([getInitialMessage(activeLang)]);
+    setWorkflowStep('TALK');
+    setActiveScheme(null);
+    setInput('');
   };
 
   const handleMicToggle = () => {
@@ -190,6 +444,134 @@ export const ChatPage: React.FC = () => {
   };
 
   const renderStructuredData = (msg: ChatMessage) => {
+    const widgetLang = ((msg.detected_language as 'en' | 'hi' | 'mr') ||
+      (selectedLanguage === 'auto' ? language : selectedLanguage) ||
+      'en') as 'en' | 'hi' | 'mr';
+
+    // 1. Confirmation Request / Handoff Result Widget (Phase 6)
+    if (
+      msg.confirmation_data &&
+      (msg.response_type === 'confirmation_request' || msg.response_type === 'confirmation_result')
+    ) {
+      const confPayload = msg.confirmation_data as ConfirmationPayload;
+      const targetCode = confPayload.scheme_code || msg.active_scheme?.scheme_code || activeScheme?.scheme_code;
+      return (
+        <HandoffConfirmationWidget
+          key={`confirm-${msg.id}`}
+          data={confPayload}
+          language={widgetLang}
+          onConfirm={(confirmMeta) => {
+            const confirmMsg =
+              widgetLang === 'hi'
+                ? 'हाँ, मैंने समीक्षित विवरण जांच लिए हैं और पुष्टि करता हूँ'
+                : widgetLang === 'mr'
+                ? 'होय, मी तपासलेले सर्व तपशील नक्की करतो'
+                : 'Yes, I confirm the reviewed application details';
+            handleSend(confirmMsg, {
+              scheme_id: targetCode,
+              workflow_step: 'CONFIRM',
+              form_action: 'confirm_submit',
+              expected_version: confirmMeta?.expected_version,
+              expected_hash: confirmMeta?.expected_hash,
+              idempotency_key: confirmMeta?.idempotency_key,
+            });
+          }}
+          onRecordPortalReference={(officialReferenceNumber, meta) => {
+            const refMsg =
+              widgetLang === 'hi'
+                ? `आधिकारिक पोर्टल संदर्भ संख्या दर्ज करें: ${officialReferenceNumber}`
+                : widgetLang === 'mr'
+                ? `अधिकृत पोर्टल संदर्भ क्रमांक नोंदवा: ${officialReferenceNumber}`
+                : `Record official portal reference number: ${officialReferenceNumber}`;
+            handleSend(refMsg, {
+              scheme_id: targetCode,
+              workflow_step: 'SUBMIT',
+              form_action: 'record_portal_reference',
+              official_reference_number: officialReferenceNumber,
+              form_data: {
+                application_id: meta?.application_id || confPayload.application_id,
+                official_reference_number: officialReferenceNumber,
+              },
+            });
+          }}
+        />
+      );
+    }
+
+    // 2. Interactive Universal Pre-Filled Form Widget (Phase 6)
+    if (
+      msg.form_draft_data &&
+      (msg.response_type === 'form_draft' || msg.response_type === 'application_guide')
+    ) {
+      const draftPayload = msg.form_draft_data as FormDraftPayload;
+      const targetCode = draftPayload.scheme_code || msg.active_scheme?.scheme_code || activeScheme?.scheme_code;
+      return (
+        <PreFilledFormWidget
+          key={`form-${msg.id}-${draftPayload.scheme_code || 'scheme'}`}
+          data={draftPayload}
+          language={widgetLang}
+          onSaveDraft={(formData) => {
+            const saveMsg =
+              widgetLang === 'hi'
+                ? `${targetCode || ''} आवेदन ड्राफ्ट सहेजें`.trim()
+                : widgetLang === 'mr'
+                ? `${targetCode || ''} अर्जाचा मसुदा जतन करा`.trim()
+                : `Save ${targetCode || ''} application draft`.trim();
+            handleSend(saveMsg, {
+              scheme_id: targetCode,
+              workflow_step: 'PRE-FILL',
+              form_action: 'save_draft',
+              form_data: formData,
+            });
+          }}
+          onConfirmSubmit={(formData) => {
+            const procMsg =
+              widgetLang === 'hi'
+                ? `${targetCode || ''} आवेदन विवरण की पुष्टि करें`.trim()
+                : widgetLang === 'mr'
+                ? `${targetCode || ''} अर्जातील माहिती नक्की करा`.trim()
+                : `Proceed to confirmation for ${targetCode || ''}`.trim();
+            handleSend(procMsg, {
+              scheme_id: targetCode,
+              workflow_step: 'CONFIRM',
+              form_action: 'request_confirmation',
+              form_data: formData,
+            });
+          }}
+        />
+      );
+    }
+
+    // 3. Interactive Document Checklist Widget (Phase 3/5 Agentic Workflow)
+    const checklistPayload =
+      (msg.checklist_data?.items?.length ? (msg.checklist_data as ChecklistPayload) : null) ||
+      (msg.response_type === 'document_checklist' && (msg.data as any)?.items?.length
+        ? (msg.data as ChecklistPayload)
+        : null);
+
+    if (checklistPayload) {
+      return (
+        <InteractiveChecklistWidget
+          key={`checklist-${msg.id}`}
+          data={checklistPayload}
+          schemeName={msg.active_scheme?.name || msg.active_scheme?.scheme_name || activeScheme?.name || activeScheme?.scheme_name}
+          onPrefillClick={() =>
+            handlePrefillClick(
+              checklistPayload.scheme_code ||
+                msg.active_scheme?.scheme_code ||
+                activeScheme?.scheme_code
+            )
+          }
+          onAskMissingDoc={(docTitle) =>
+            handleAskMissingDoc(
+              docTitle,
+              checklistPayload.scheme_code || activeScheme?.scheme_code
+            )
+          }
+        />
+      );
+    }
+
     if (msg.response_type === 'scheme_cards' && Array.isArray(msg.data)) {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3.5 w-full">
@@ -201,13 +583,13 @@ export const ChatPage: React.FC = () => {
                   {scheme.eligibility_status && (
                     <Badge variant={scheme.eligibility_status}>
                       {scheme.eligibility_status === 'eligible'
-                        ? '● पात्र'
+                        ? (msg.detected_language === 'en' ? '● Eligible' : '● पात्र')
                         : scheme.eligibility_status === 'potentially_eligible'
-                        ? '● संभाव्य पात्र'
+                        ? (msg.detected_language === 'en' ? '● Potentially Eligible' : msg.detected_language === 'hi' ? '● संभावित पात्र' : '● संभाव्य पात्र')
                         : scheme.eligibility_status === 'insufficient_information'
-                        ? '● माहिती आवश्यक'
+                        ? (msg.detected_language === 'en' ? '● Info Needed' : msg.detected_language === 'hi' ? '● विवरण आवश्यक' : '● माहिती आवश्यक')
                         : scheme.eligibility_status === 'not_eligible'
-                        ? '● अपात्र'
+                        ? (msg.detected_language === 'en' ? '● Ineligible' : '● अपात्र')
                         : scheme.eligibility_status.toUpperCase()}
                     </Badge>
                   )}
@@ -248,7 +630,13 @@ export const ChatPage: React.FC = () => {
         <div className="space-y-2 mt-3.5 w-full">
           <div className="flex items-center gap-1.5 text-xs font-bold text-navy">
             <FileText className="w-4 h-4 text-saffron" />
-            <span>आवश्यक कागदपत्रे पडताळणी यादी (Required Document Checklist)</span>
+            <span>
+              {widgetLang === 'mr'
+                ? 'आवश्यक कागदपत्रे पडताळणी यादी'
+                : widgetLang === 'hi'
+                ? 'आवश्यक दस्तावेज़ जांच सूची'
+                : 'Required Document Checklist'}
+            </span>
           </div>
           {(msg.data as DocumentRequirement[]).map((doc) => (
             <div key={doc.id} className="flex items-start justify-between gap-3 p-3 rounded-xl bg-white border border-navy/10 text-xs shadow-subtle">
@@ -262,7 +650,15 @@ export const ChatPage: React.FC = () => {
                 )}
               </div>
               <Badge variant={doc.is_mandatory ? 'saffron' : 'category'}>
-                {doc.is_mandatory ? 'Mandatory' : 'Optional'}
+                {doc.is_mandatory
+                  ? widgetLang === 'mr' || widgetLang === 'hi'
+                    ? 'अनिवार्य'
+                    : 'Mandatory'
+                  : widgetLang === 'mr'
+                  ? 'पर्यायी'
+                  : widgetLang === 'hi'
+                  ? 'वैकल्पिक'
+                  : 'Optional'}
               </Badge>
             </div>
           ))}
@@ -286,10 +682,10 @@ export const ChatPage: React.FC = () => {
               {guide.citizen_eligibility_status && (
                 <Badge variant={guide.citizen_eligibility_status as any}>
                   {guide.citizen_eligibility_status === 'eligible'
-                    ? '● पात्र नागरिक'
+                    ? (msg.detected_language === 'en' ? '● Eligible Citizen' : '● पात्र नागरिक')
                     : guide.citizen_eligibility_status === 'not_eligible'
-                    ? '● अपात्र'
-                    : '● माहिती आवश्यक'}
+                    ? (msg.detected_language === 'en' ? '● Ineligible' : '● अपात्र')
+                    : (msg.detected_language === 'en' ? '● Info Needed' : msg.detected_language === 'hi' ? '● विवरण आवश्यक' : '● माहिती आवश्यक')}
                 </Badge>
               )}
             </div>
@@ -298,7 +694,13 @@ export const ChatPage: React.FC = () => {
             {guide.steps && guide.steps.length > 0 && (
               <div className="mt-3 space-y-2">
                 <h5 className="text-[11px] font-bold text-navy uppercase tracking-wider flex items-center gap-1">
-                  <span>अधिकृत अर्ज प्रक्रिया (Step-by-Step Procedure)</span>
+                  <span>
+                    {msg.detected_language === 'en'
+                      ? 'Official Application Procedure'
+                      : msg.detected_language === 'hi'
+                      ? 'आधिकारिक आवेदन प्रक्रिया'
+                      : 'अधिकृत अर्ज प्रक्रिया'}
+                  </span>
                 </h5>
                 <div className="space-y-1.5">
                   {guide.steps.map((step, idx) => (
@@ -325,7 +727,13 @@ export const ChatPage: React.FC = () => {
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-saffron hover:bg-saffron-dark text-white font-bold text-xs rounded-xl shadow-subtle transition-all"
                 >
-                  <span>अधिकृत नोंदणी पोर्टल उघडा</span>
+                  <span>
+                    {widgetLang === 'mr'
+                      ? 'अधिकृत नोंदणी पोर्टल उघडा'
+                      : widgetLang === 'hi'
+                      ? 'आधिकारिक पंजीकरण पोर्टल खोलें'
+                      : 'Open Official Registration Portal'}
+                  </span>
                   <ExternalLink className="w-3.5 h-3.5" />
                 </a>
               )}
@@ -335,7 +743,13 @@ export const ChatPage: React.FC = () => {
                   to={`/schemes/${guide.scheme_id}`}
                   className="text-xs font-semibold text-saffron-dark hover:text-saffron flex items-center gap-1"
                 >
-                  <span>योजना माहिती पहा</span>
+                  <span>
+                    {widgetLang === 'mr'
+                      ? 'योजना माहिती पहा'
+                      : widgetLang === 'hi'
+                      ? 'योजना विवरण देखें'
+                      : 'View Scheme Details'}
+                  </span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               )}
@@ -346,7 +760,13 @@ export const ChatPage: React.FC = () => {
               <div className="mt-2 text-[11px] text-navy/70 bg-ivory-100/90 rounded-xl p-2.5 border border-navy/8 flex items-start gap-2">
                 <Building2 className="w-3.5 h-3.5 text-navy/50 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-navy">ऑफलाइन अर्ज पर्याय (CSC / शासकीय केंद्र): </span>
+                  <span className="font-bold text-navy">
+                    {widgetLang === 'mr'
+                      ? 'ऑफलाइन अर्ज पर्याय (CSC / शासकीय केंद्र): '
+                      : widgetLang === 'hi'
+                      ? 'ऑफ़लाइन आवेदन विकल्प (CSC / सरकारी केंद्र): '
+                      : 'Offline Application Option (CSC / Govt Center): '}
+                  </span>
                   <span>{guide.offline_procedure}</span>
                 </div>
               </div>
@@ -366,7 +786,11 @@ export const ChatPage: React.FC = () => {
               <span>{bInfo.scheme_name} ({bInfo.scheme_code})</span>
             </span>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
-              DBT थेट बँक जमा
+              {widgetLang === 'mr'
+                ? 'थेट लाभ हस्तांतरण (DBT)'
+                : widgetLang === 'hi'
+                ? 'प्रत्यक्ष लाभ अंतरण (DBT)'
+                : 'Scheme Benefits'}
             </span>
           </div>
           <p className="text-xs font-medium text-emerald-900 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-emerald-100">
@@ -380,7 +804,13 @@ export const ChatPage: React.FC = () => {
                 rel="noopener noreferrer"
                 className="text-[11px] text-emerald-700 hover:text-emerald-900 font-semibold flex items-center gap-1"
               >
-                <span>अधिकृत संकेतस्थळ (Official Website)</span>
+                <span>
+                  {widgetLang === 'mr'
+                    ? 'अधिकृत संकेतस्थळ'
+                    : widgetLang === 'hi'
+                    ? 'आधिकारिक वेबसाइट'
+                    : 'Official Website'}
+                </span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
@@ -396,7 +826,13 @@ export const ChatPage: React.FC = () => {
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-blue-600" />
-              <span>नोंदणीनंतरची प्रक्रिया व स्थिती (Status & Next Steps)</span>
+              <span>
+                {widgetLang === 'mr'
+                  ? 'नोंदणीनंतरची प्रक्रिया व स्थिती'
+                  : widgetLang === 'hi'
+                  ? 'स्थिति और अगले कदम'
+                  : 'Status & Next Steps'}
+              </span>
             </span>
             <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
               {sTrack.scheme_code}
@@ -422,7 +858,13 @@ export const ChatPage: React.FC = () => {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-subtle transition-all"
               >
-                <span>अर्जाची स्थिती तपासा (Check Status Portal)</span>
+                <span>
+                  {widgetLang === 'mr'
+                    ? 'अर्जाची स्थिती तपासा'
+                    : widgetLang === 'hi'
+                    ? 'आवेदन स्थिति जांचें'
+                    : 'Official Scheme Portal'}
+                </span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
@@ -432,6 +874,95 @@ export const ChatPage: React.FC = () => {
     }
 
     return null;
+  };
+
+  const handlePrefillClick = (schemeCode?: string) => {
+    const targetCode =
+      schemeCode ||
+      activeScheme?.scheme_code ||
+      (typeof activeScheme === 'string' ? activeScheme : undefined);
+    const activeLang = selectedLanguage === 'auto' ? language : selectedLanguage;
+    const msgText =
+      activeLang === 'en'
+        ? targetCode
+          ? `Pre-fill application draft for ${targetCode}`
+          : 'Pre-fill my application draft'
+        : activeLang === 'hi'
+        ? targetCode
+          ? `मेरे लिए ${targetCode} योजना का आवेदन मसौदा भरें`
+          : 'मेरे लिए आवेदन मसौदा भरें'
+        : targetCode
+        ? `माझ्यासाठी ${targetCode} योजनेचा अर्ज मसुदा तयार करा`
+        : 'माझ्यासाठी अर्जाचा मसुदा तयार करा';
+    handleSend(
+      msgText,
+      {
+        scheme_id: targetCode,
+        workflow_step: 'PRE-FILL',
+        form_action: 'prefill_form',
+      }
+    );
+  };
+
+  const handleAskMissingDoc = (docTitle: string, schemeCode?: string) => {
+    const targetCode =
+      schemeCode ||
+      activeScheme?.scheme_code ||
+      (typeof activeScheme === 'string' ? activeScheme : undefined);
+    const msgText =
+      language === 'en'
+        ? `I do not have '${docTitle}', what should I do?`
+        : language === 'hi'
+        ? `मेरे पास '${docTitle}' नहीं है, मैं क्या करूँ?`
+        : `माझ्याकडे '${docTitle}' उपलब्ध नाही, मी काय करावे?`;
+    handleSend(msgText, {
+      scheme_id: targetCode,
+      workflow_step: 'CHECKLIST',
+    });
+  };
+
+  const handleStepClick = (stage: WorkflowStage) => {
+    if (stage === 'MATCH') {
+      const msgText =
+        language === 'en'
+          ? 'Show my eligible schemes'
+          : language === 'hi'
+          ? 'मुझे पात्र योजनाएं दिखाएं'
+          : 'मला पात्र योजना दाखवा';
+      handleSend(msgText, { workflow_step: 'MATCH' });
+    } else if (stage === 'CHECKLIST') {
+      const msgText =
+        language === 'en'
+          ? 'Which documents do I need?'
+          : language === 'hi'
+          ? 'मुझे कौन से दस्तावेज़ चाहिए?'
+          : 'मला कोणती कागदपत्रे लागतील?';
+      handleSend(msgText, { workflow_step: 'CHECKLIST' });
+    } else if (stage === 'PRE-FILL') {
+      const msgText =
+        language === 'en'
+          ? 'Pre-fill my application draft'
+          : language === 'hi'
+          ? 'मेरे लिए आवेदन का मसौदा तैयार करें'
+          : 'माझ्यासाठी अर्जाचा मसुदा भरा';
+      handleSend(msgText, { workflow_step: 'PRE-FILL' });
+    } else if (stage === 'CONFIRM') {
+      const msgText =
+        language === 'en'
+          ? 'Confirm my application readiness packet'
+          : language === 'hi'
+          ? 'आवेदन तत्परता पैकेट की पुष्टि करें'
+          : 'अंतिम अर्ज सज्जता संच नक्की करा';
+      handleSend(msgText, { workflow_step: 'CONFIRM' });
+    } else {
+      const msgText =
+        language === 'en'
+          ? 'Hello, I want information about welfare schemes'
+          : language === 'hi'
+          ? 'नमस्ते, मुझे सरकारी योजनाओं की जानकारी चाहिए'
+          : 'नमस्कार, मला योजनांबद्दल माहिती हवी आहे';
+      handleSend(msgText, { workflow_step: 'TALK' });
+    }
   };
 
   return (
@@ -459,8 +990,25 @@ export const ChatPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Language Selector & Global Audio Controls */}
+        {/* Language Selector, New Chat & Global Audio Controls */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleNewConversation}
+            disabled={loading}
+            className="flex items-center gap-1 bg-white border border-navy/12 hover:border-saffron/40 hover:bg-ivory-50 text-navy font-semibold text-xs px-2.5 py-1 rounded-xl shadow-subtle transition-colors disabled:opacity-50"
+            title="Start a new conversation"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-navy/60" />
+            <span>
+              {(selectedLanguage === 'auto' ? language : selectedLanguage) === 'mr'
+                ? 'नवीन चर्चा'
+                : (selectedLanguage === 'auto' ? language : selectedLanguage) === 'hi'
+                ? 'नई बातचीत'
+                : 'New Chat'}
+            </span>
+          </button>
+
           {/* Language Selector Dropdown */}
           <div className="flex items-center gap-1 bg-white border border-navy/12 rounded-xl px-2.5 py-1 text-xs shadow-subtle">
             <Languages className="w-3.5 h-3.5 text-navy/50" />
@@ -504,6 +1052,13 @@ export const ChatPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 5-Stage Agentic Workflow Stepper (TALK -> MATCH -> CHECKLIST -> PRE-FILL -> CONFIRM) */}
+      <WorkflowStepper
+        currentStep={workflowStep}
+        activeScheme={activeScheme}
+        onStepClick={handleStepClick}
+      />
 
       {/* Microphone Permission / STT Error Alert Banner */}
       {sttError && (

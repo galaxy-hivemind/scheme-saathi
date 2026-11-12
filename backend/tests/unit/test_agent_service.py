@@ -37,10 +37,13 @@ def test_english_language_detection():
 
 
 def test_user_language_preference_override():
-    # Explicit user preference overrides auto detection
-    assert detect_language("I want farming scheme", user_preference="mr") == "mr"
-    assert detect_language("मला माहिती हवी आहे", user_preference="hi") == "hi"
-    assert detect_language("मुझे योजना चाहिए", user_preference="en") == "en"
+    # Latest citizen message strictly determines response language; UI preference acts as neutral fallback
+    assert detect_language("I want farming scheme", user_preference="mr") == "en"
+    assert detect_language("मला माहिती हवी आहे", user_preference="hi") == "mr"
+    assert detect_language("मुझे योजना चाहिए", user_preference="en") == "hi"
+    assert detect_language("12345", user_preference="mr") == "mr"
+    assert detect_language("12345", user_preference="hi") == "hi"
+    assert detect_language("12345", user_preference="en") == "en"
 
 
 def test_intent_classification():
@@ -895,7 +898,8 @@ def test_geographic_availability_in_maharashtra():
         db=None, schemes=all_schemes, intent={"scheme_code": "NSMSNY-MH"},
         lang="mr", conv_id="conv-geo-state-mr", profile=None, raw_query="नमो शेतकरी योजना महाराष्ट्रात उपलब्ध आहे का?"
     )
-    assert "महाराष्ट्र शासनाची (Government of Maharashtra)" in res_state_mr.message
+    assert "महाराष्ट्र शासनाची" in res_state_mr.message
+    assert "(Government of Maharashtra)" not in res_state_mr.message
 
     # Test Intent Extraction for Geographic Availability
     geo_intent = _extract_intent("Is PM-KISAN available in Maharashtra?", schemes=all_schemes)

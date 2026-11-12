@@ -15,10 +15,16 @@ export const Footer: React.FC = () => {
           </div>
           <div className="space-y-1.5">
             <h5 className="font-semibold text-white text-sm">
-              {language === 'hi' ? 'नागरिक सूचना व निष्पक्षता गारंटी' : 'Citizen Transparency & Independence Notice'}
+              {language === 'mr'
+                ? 'नागरिक पारदर्शकता व निष्पक्षता सूचना'
+                : language === 'hi'
+                ? 'नागरिक सूचना व निष्पक्षता गारंटी'
+                : 'Citizen Transparency & Independence Notice'}
             </h5>
             <p className="leading-relaxed text-ivory/70 text-xs max-w-4xl">
-              {language === 'hi'
+              {language === 'mr'
+                ? 'योजना साथी हे एक स्वतंत्र व निष्पक्ष AI-मार्गदर्शक व्यासपीठ असून भारतीय नागरिकांना शासकीय योजनांची माहिती, पात्रता पडताळणी आणि अर्ज सज्जतेसाठी सहाय्य करण्याच्या उद्देशाने विकसित केले गेले आहे. हे व्यासपीठ कोणत्याही शासकीय मंत्रालयाचे अधिकृत पोर्टल नाही. सर्व पात्रता निकष अधिकृत शासकीय स्रोतांवर आधारित आहेत.'
+                : language === 'hi'
                 ? 'योजना साथी एक स्वतंत्र व निष्पक्ष AI-मार्गदर्शक मंच है, जिसे भारतीय नागरिकों को सरकारी योजनाओं की खोज व आवेदन प्रक्रिया में सहायता देने हेतु तैयार किया गया है। यह मंच किसी सरकारी मंत्रालय का आधिकारिक पोर्टल नहीं है। सभी पात्रता मानदंड व प्रक्रियाएं आधिकारिक सरकारी स्रोतों (जैसे myscheme.gov.in) पर आधारित हैं।'
                 : 'Scheme Saathi is an independent welfare assistance platform designed to guide Indian citizens through discovery, deterministic eligibility evaluation, and application drafting. It is not an official government portal. All eligibility outcomes are evaluated via deterministic rules derived from published scheme guidelines.'}
             </p>

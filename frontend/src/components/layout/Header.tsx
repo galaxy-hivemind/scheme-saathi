@@ -10,18 +10,18 @@ import logoOriginal from '@/assets/logo-original.png';
 import logoOriginal2x from '@/assets/logo-original@2x.png';
 
 export const Header: React.FC = () => {
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const { profile, token } = useAuth();
   const { isMockMode, setMockMode } = useApiMode();
   const location = useLocation();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   const navLinks = [
-    { to: '/', label: language === 'hi' ? 'होम' : 'Home' },
-    { to: '/schemes', label: language === 'hi' ? 'योजनाएं' : 'Schemes' },
-    { to: '/eligible', label: language === 'hi' ? 'पात्रता' : 'Eligibility' },
-    { to: '/chat', label: language === 'hi' ? 'एआई सहायक' : 'AI Assistant' },
-    { to: '/applications', label: language === 'hi' ? 'मेरे आवेदन' : 'My Applications' },
+    { to: '/', label: t.nav.home },
+    { to: '/schemes', label: t.nav.schemes },
+    { to: '/eligible', label: t.nav.eligibility },
+    { to: '/chat', label: t.nav.chat },
+    { to: '/applications', label: t.nav.applications },
   ];
 
   return (
@@ -64,26 +64,39 @@ export const Header: React.FC = () => {
 
           {/* Right Action Controls: Language Toggle, Mock/Live Pill, Login Button */}
           <div className="flex items-center gap-3 sm:gap-4">
-            {/* Minimal Hindi | EN text switcher */}
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-navy">
-              <button
-                onClick={() => setLanguage('hi')}
-                className={cn(
-                  'transition-colors',
-                  language === 'hi' ? 'text-saffron-vibrant font-bold underline underline-offset-2' : 'text-navy/60 hover:text-navy'
-                )}
-              >
-                हिंदी
-              </button>
-              <span className="text-navy/30">|</span>
+            {/* Minimal Language Switcher: English | हिन्दी | मराठी */}
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-navy bg-white/80 border border-navy/10 px-2.5 py-1 rounded-full shadow-subtle">
               <button
                 onClick={() => setLanguage('en')}
                 className={cn(
-                  'transition-colors',
-                  language === 'en' ? 'text-saffron-vibrant font-bold underline underline-offset-2' : 'text-navy/60 hover:text-navy'
+                  'transition-colors px-1 py-0.5 rounded',
+                  language === 'en' ? 'text-saffron-dark font-bold underline underline-offset-2' : 'text-navy/60 hover:text-navy'
                 )}
+                title="Switch interface language to English"
               >
-                EN
+                English
+              </button>
+              <span className="text-navy/20">|</span>
+              <button
+                onClick={() => setLanguage('hi')}
+                className={cn(
+                  'transition-colors px-1 py-0.5 rounded',
+                  language === 'hi' ? 'text-saffron-dark font-bold underline underline-offset-2' : 'text-navy/60 hover:text-navy'
+                )}
+                title="इंटरफेस भाषा हिंदी में बदलें"
+              >
+                हिन्दी
+              </button>
+              <span className="text-navy/20">|</span>
+              <button
+                onClick={() => setLanguage('mr')}
+                className={cn(
+                  'transition-colors px-1 py-0.5 rounded',
+                  language === 'mr' ? 'text-saffron-dark font-bold underline underline-offset-2' : 'text-navy/60 hover:text-navy'
+                )}
+                title="इंटरफेस भाषा मराठीत बदला"
+              >
+                मराठी
               </button>
             </div>
 

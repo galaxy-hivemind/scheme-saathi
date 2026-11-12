@@ -115,7 +115,7 @@ def test_tool_build_checklist_widow_pension():
 
 
 def test_tool_fill_form_supported_schemes():
-    supported = ["PM-KISAN", "KCC", "PM-SVANIDHI", "NSP-CSSS", "PMMVY", "WIDOW-PENSION"]
+    supported = ["PM-KISAN", "KCC", "PM-SVANIDHI", "NSP-CSSS", "PMMVY", "WIDOW-PENSION", "MLBY-MH", "AB-PMJAY"]
     for code in supported:
         schema = get_form_schema_for_scheme(code)
         assert schema is not None, f"Schema missing for {code}"
@@ -128,6 +128,134 @@ def test_tool_fill_form_supported_schemes():
         assert res["total_mandatory_fields"] > 0
 
 
+def test_tool_fill_form_mlby_mh_readiness():
+    """Verify MLBY-MH form pre-filling, lack of fabricated defaults, and readiness calculation."""
+    schema = get_form_schema_for_scheme("MLBY-MH")
+    assert schema is not None
+    assert schema["scheme_code"] == "MLBY-MH"
+    assert schema["schema_nature"] == "application_readiness_draft"
+    assert "ladkibahin.maharashtra.gov.in" in schema["official_portal"]
+
+    # Verify alias resolution
+    assert get_form_schema_for_scheme("Majhi Ladki Bahin")["scheme_code"] == "MLBY-MH"
+    assert get_form_schema_for_scheme("लडकी बहिन योजना")["scheme_code"] == "MLBY-MH"
+
+    # Profile with partial data (NO assumed ration card, four wheeler, tax, or bank)
+    profile = UserProfile(
+        user_id=uuid.uuid4(),
+        full_name="Pooja Patil",
+        gender="FEMALE",
+        state="Maharashtra",
+        district="Kolhapur",
+        profile_data={
+            "phone_number": "9876543210",
+            "aadhaar_number": "123456789012",
+            "marital_status": "Married",
+        },
+    )
+    profile.age = 29
+    profile.annual_income = 120000
+
+    res = tool_fill_form(db=None, user=None, profile=profile, scheme_code_or_name="MLBY-MH")
+    assert res["form_supported"] is True
+    assert res["scheme_code"] == "MLBY-MH"
+    assert res["total_mandatory_fields"] == 15
+
+    # Verify unsafe defaults are NOT fabricated
+    assert res["values"]["ration_card_type"] is None
+    assert res["values"]["family_owns_four_wheeler"] is None
+    assert res["values"]["income_tax_payer_in_family"] is None
+    assert res["values"]["domicile_proof_type"] is None
+    assert res["values"]["bank_account_number"] is None
+
+    # Readiness reflects only genuinely available facts (9 of 15 = 60.0%)
+    assert res["readiness_percentage"] == 60.0
+    assert res["can_confirm"] is False
+
+    # Check sections
+    section_ids = [s["section_id"] for s in res["sections"]]
+    assert "personal_info" in section_ids
+    assert "domicile_info" in section_ids
+    assert "economic_status" in section_ids
+    assert "bank_dbt_info" in section_ids
+
+    # When citizen provides the remaining required facts
+    completed_res = tool_fill_form(
+        db=None,
+        user=None,
+        profile=profile,
+        scheme_code_or_name="MLBY-MH",
+        form_overrides={
+            "domicile_proof_type": "Maharashtra Domicile Certificate",
+            "ration_card_type": "Orange Ration Card (Priority)",
+            "family_owns_four_wheeler": "No",
+            "income_tax_payer_in_family": "No",
+            "bank_account_number": "112233445566",
+            "ifsc_code": "MAHB0001234",
+        },
+    )
+    assert completed_res["readiness_percentage"] == 100.0
+    assert completed_res["can_confirm"] is True
+
+
+def test_tool_fill_form_ab_pmjay_senior_citizen_readiness():
+    """Verify AB-PMJAY senior citizen universal cover form schema, no fabricated personal defaults, and readiness."""
+    schema = get_form_schema_for_scheme("AB-PMJAY")
+    assert schema is not None
+    assert schema["scheme_code"] == "AB-PMJAY"
+    assert schema["schema_nature"] == "application_readiness_draft"
+    assert "beneficiary.nha.gov.in" in schema["official_portal"]
+
+    # Verify alias resolution
+    assert get_form_schema_for_scheme("Ayushman Bharat")["scheme_code"] == "AB-PMJAY"
+    assert get_form_schema_for_scheme("Vaya Vandana")["scheme_code"] == "AB-PMJAY"
+
+    # Profile of 73-year-old senior citizen with partial data
+    profile = UserProfile(
+        user_id=uuid.uuid4(),
+        full_name="Ramchandra Kulkarni",
+        gender="MALE",
+        state="Maharashtra",
+        district="Pune",
+        profile_data={
+            "phone_number": "9811223344",
+            "aadhaar_number": "998877665544",
+        },
+    )
+    profile.age = 73
+
+    res = tool_fill_form(db=None, user=None, profile=profile, scheme_code_or_name="AB-PMJAY")
+    assert res["form_supported"] is True
+    assert res["scheme_code"] == "AB-PMJAY"
+
+    # Verify no fabricated personal facts for coverage category, sub-district, or existing card
+    assert res["values"]["coverage_category"] is None
+    assert res["values"]["existing_ayushman_card"] is None
+    assert res["values"]["sub_district"] is None  # District 'Pune' must never be substituted for sub_district
+    # Legitimate system default for e-KYC mode is preserved
+    assert res["values"]["ekyc_mode"] == "Aadhaar OTP Authentication"
+
+    # When citizen confirms category, sub-district, and existing card status
+    completed_res = tool_fill_form(
+        db=None,
+        user=None,
+        profile=profile,
+        scheme_code_or_name="AB-PMJAY",
+        form_overrides={
+            "coverage_category": "Senior Citizen (70+ Universal Cover)",
+            "existing_ayushman_card": "No",
+            "sub_district": "Haveli",
+        },
+    )
+    assert completed_res["readiness_percentage"] == 100.0
+    assert completed_res["can_confirm"] is True
+
+    section_ids = [s["section_id"] for s in completed_res["sections"]]
+    assert "beneficiary_info" in section_ids
+    assert "residential_location" in section_ids
+    assert "ekyc_verification" in section_ids
+
+
 def test_tool_fill_form_unsupported_scheme():
     res = tool_fill_form(db=None, user=None, profile=None, scheme_code_or_name="UNKNOWN-XYZ-SCHEME")
     assert res["form_supported"] is False
@@ -138,13 +266,17 @@ def test_tool_submit_form_confirmation_and_handoff():
     # Unconfirmed test
     prompt = tool_submit_form(db=None, user=None, profile=None, scheme_code_or_name="WIDOW-PENSION", confirmed=False)
     assert prompt["requires_confirmation"] is True
-    assert "review and confirm" in prompt["message"]
+    assert "review" in prompt["message"].lower()
 
-    # Confirmed test with UP state profile
+    # Confirmed test with UP state profile (no unverified external portal API -> honest manual_portal_required)
     profile = UserProfile(user_id=uuid.uuid4(), state="Uttar Pradesh", profile_data={})
     confirmed_res = tool_submit_form(db=None, user=None, profile=profile, scheme_code_or_name="WIDOW-PENSION", confirmed=True)
     assert confirmed_res["requires_confirmation"] is False
-    assert "SAATHI/READY/2026/" in confirmed_res["handoff_reference"]
+    assert confirmed_res["confirmed"] is True
+    assert confirmed_res["manual_portal_required"] is True
+    assert confirmed_res["submitted"] is False
+    assert confirmed_res["external_reference_id"] is None
+    assert confirmed_res["lifecycle_state"] == "confirmed"
     assert "sspy-up.gov.in" in confirmed_res["official_portal_url"]
 
 
@@ -239,5 +371,68 @@ def test_persona_5_senior_citizen_confirmation_handoff():
     res = plan_and_execute_agentic_flow(db=None, request=req, current_user=None, profile=profile, session=session, lang="en", all_schemes=[])
     assert res is not None
     assert res.workflow_step == "CONFIRM"
-    assert "SAATHI/READY/2026/" in res.confirmation_data["handoff_reference"]
+    assert res.confirmation_data["confirmed"] is True
+    assert res.confirmation_data["manual_portal_required"] is True
+    assert res.confirmation_data["external_reference_id"] is None
     assert "sspy-up.gov.in" in res.confirmation_data["official_portal_url"]
+
+
+# ── 5. Corrections and Follow-up Affirmations ────────────────────────────────
+
+def test_citizen_correction_replanning():
+    """Citizen provides correction: 'Actually my family income is ₹50,000'."""
+    profile = UserProfile(user_id=uuid.uuid4(), state="Uttar Pradesh", annual_family_income=60000, profile_data={"marital_status": "widowed", "age": 63})
+    session = {"conv_id": "corr-test", "active_scheme_code": "WIDOW-PENSION", "workflow_step": "MATCH"}
+    req = AgentChatRequest(
+        conversation_id="corr-test",
+        message="Actually my family income is 50,000 rupees, not 60,000"
+    )
+    res = plan_and_execute_agentic_flow(db=None, request=req, current_user=None, profile=profile, session=session, lang="en", all_schemes=[])
+    assert res is not None
+    assert "Details Updated" in res.message or "ELIGIBLE" in res.message
+    assert profile.annual_income == 50000
+
+
+def test_affirmative_followup_advances_to_prefill():
+    """Citizen confirms they have the requested document -> advances to PRE-FILL."""
+    profile = UserProfile(user_id=uuid.uuid4(), state="Uttar Pradesh", full_name="Sita Devi", profile_data={"marital_status": "widowed", "age": 63})
+    session = {"conv_id": "affirm-test", "active_scheme_code": "WIDOW-PENSION", "workflow_step": "MATCH"}
+    req = AgentChatRequest(
+        conversation_id="affirm-test",
+        message="Yes, I have the death certificate"
+    )
+    res = plan_and_execute_agentic_flow(db=None, request=req, current_user=None, profile=profile, session=session, lang="en", all_schemes=[])
+    assert res is not None
+    assert res.workflow_step == "PRE-FILL"
+    assert res.form_draft_data is not None
+    assert res.form_draft_data["scheme_code"] == "WIDOW-PENSION"
+
+
+def test_natural_language_farmer_discovery_marathi():
+    """Natural language farmer inquiry in Marathi."""
+    session = {"conv_id": "farmer-nl-test"}
+    req = AgentChatRequest(
+        conversation_id="farmer-nl-test",
+        message="मी महाराष्ट्रातील शेतकरी आहे, माझ्याकडे २.५ एकर शेतजमीन आहे."
+    )
+    res = plan_and_execute_agentic_flow(db=None, request=req, current_user=None, profile=None, session=session, lang="mr", all_schemes=[])
+    assert res is not None
+    assert res.workflow_step == "MATCH"
+    assert "PM-KISAN" in res.message
+    assert "सातबारा उतारा" in res.message
+
+
+def test_backend_restart_context_recovery():
+    """Verifies that active scheme and workflow step are restored from profile after session wipe."""
+    from app.services.agent_service import _persist_active_scheme_to_profile, _recover_active_scheme_from_profile
+    profile = UserProfile(user_id=uuid.uuid4(), profile_data={})
+    conv_id = "restart-test-conv"
+
+    # Persist context
+    _persist_active_scheme_to_profile(profile, conv_id, "WIDOW-PENSION", workflow_step="CHECKLIST")
+    
+    # Recover after restart
+    recovered = _recover_active_scheme_from_profile(profile, conv_id, schemes=[])
+    assert recovered is not None
+    assert recovered.scheme_code == "WIDOW-PENSION"
+    assert profile.profile_data["active_schemes_by_conv"][conv_id]["workflow_step"] == "CHECKLIST"

@@ -7,6 +7,8 @@ from app.models.user_consent import UserConsent
 from app.models.scheme import Scheme
 from app.models.scheme_rule_version import SchemeRuleVersion
 from app.models.scheme_document import SchemeDocument
+from app.models.conversation_session import ConversationSession
+from app.models.application_record import ApplicationRecord
 
 __all__ = [
     "User",
@@ -15,4 +17,6 @@ __all__ = [
     "Scheme",
     "SchemeRuleVersion",
     "SchemeDocument",
+    "ConversationSession",
+    "ApplicationRecord",
 ]

@@ -76,9 +76,10 @@ class APIClient {
       });
 
       if (!response.ok || !json.success) {
+        const rawAny = json as unknown as { detail?: string };
         const error: APIError = json.error || {
           code: `HTTP_${response.status}`,
-          message: response.statusText || 'Request failed.',
+          message: rawAny?.detail || response.statusText || 'Request failed.',
         };
         throw error;
       }
@@ -127,6 +128,23 @@ class APIClient {
     });
   }
 
+  public async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
+  public async fetchBlob(endpoint: string): Promise<Blob> {
+    const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+    const response = await fetch(url, { method: 'GET', headers });
+    if (!response.ok) {
+      throw { code: `HTTP_${response.status}`, message: 'Unable to load document file.' } as APIError;
+    }
+    return response.blob();
+  }
+
   public async upload<T>(endpoint: string, formData: FormData): Promise<T> {
     const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
     const headers: Record<string, string> = {};
@@ -140,9 +158,12 @@ class APIClient {
       body: formData,
     });
 
-    const json: APIResponse<T> = await response.json();
+    const json: APIResponse<T> & { detail?: string } = await response.json().catch(() => ({
+      success: false,
+      error: { code: 'INVALID_JSON', message: 'Invalid response from server' },
+    }));
     if (!response.ok || !json.success) {
-      throw json.error || { code: 'UPLOAD_FAILED', message: 'Failed to upload document' };
+      throw json.error || { code: 'UPLOAD_FAILED', message: json.detail || 'Failed to upload document' };
     }
     return json.data as T;
   }
